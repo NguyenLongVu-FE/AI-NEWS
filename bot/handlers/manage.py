@@ -8,13 +8,12 @@ from bot.config import (
     PRIORITY_VALUES,
     STATUS_VALUES,
 )
-from bot.services.sheets import SheetsService
+from bot.services.sheets import get_sheets_service
 from bot.utils.formatting import format_view_detail, format_error
-
-sheets = SheetsService()
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if len(context.args or []) < 2:
         await update.message.reply_text(
             "❌ <b>Cu phap:</b> /status <i>ID</i> <i>trang thai</i>\n"
@@ -56,6 +55,7 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if len(context.args or []) < 2:
         await update.message.reply_text(
             "❌ <b>Cu phap:</b> /note <i>ID</i> <i>noi dung</i>\n"
@@ -95,6 +95,7 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if len(context.args or []) < 2:
         await update.message.reply_text(
             f"❌ <b>Cu phap:</b> /priority <i>ID</i> <i>{'/'.join(PRIORITY_VALUES)}</i>\n"
@@ -134,6 +135,7 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if not context.args:
         await update.message.reply_text(
             "❌ <b>Cu phap:</b> /delete <i>ID</i>\nVi du: /delete 42",
@@ -174,6 +176,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if len(context.args or []) < 3:
         await update.message.reply_text(
             "❌ <b>Cu phap:</b> /edit <i>ID</i> <i>field</i> <i>value</i>\n"
@@ -215,6 +218,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     if not context.args:
         await update.message.reply_text(
             "❌ <b>Cu phap:</b> /view <i>ID</i>\nVi du: /view 42",

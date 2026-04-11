@@ -3,10 +3,9 @@ from datetime import datetime, timedelta
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.services.sheets import SheetsService
+from bot.services.sheets import get_sheets_service
 from bot.utils.formatting import format_empty_state
 
-sheets = SheetsService()
 PAGE_SIZE = 5
 
 
@@ -18,6 +17,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
+    sheets = get_sheets_service()
     keyword = " ".join(context.args)
     results = sheets.search(keyword)
     await _send_results(update, results, f'Tim kiem: "{keyword}"')
@@ -31,6 +31,7 @@ async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             category = arg[1:]
         elif arg.startswith("!"):
             priority = arg[1:].lower()
+    sheets = get_sheets_service()
     results = sheets.filter_by(category=category or None, priority=priority or None)
     label = (
         f"Loc: {f'@{category}' if category else ''} "
@@ -40,6 +41,7 @@ async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     records = sheets.get_all_records()
     all_tags = set()
     for r in records:
@@ -65,11 +67,13 @@ async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unread(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     results = sheets.filter_by(status="chua_doc")
     await _send_results(update, results, "Chua doc")
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     records = sheets.get_all_records()
     today_str = datetime.now().strftime("%Y-%m-%d")
     results = [
@@ -79,6 +83,7 @@ async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sheets = get_sheets_service()
     records = sheets.get_all_records()
     week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
     results = [

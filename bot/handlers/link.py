@@ -6,7 +6,7 @@ from telegram.ext import MessageHandler, filters, ContextTypes
 from bot.services.parser import parse_link_input
 from bot.services.scraper import ScraperService
 from bot.services.gemini import GeminiService
-from bot.services.sheets import SheetsService
+from bot.services.sheets import get_sheets_service
 from bot.utils.formatting import (
     format_save_success,
     format_processing,
@@ -15,7 +15,6 @@ from bot.utils.formatting import (
 
 scraper = ScraperService()
 gemini = GeminiService()
-sheets = SheetsService()
 
 URL_REGEX = re.compile(r"https?://\S+")
 
@@ -25,6 +24,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not URL_REGEX.search(text):
         return
 
+    sheets = get_sheets_service()
     user = update.message.from_user
     user_name = user.first_name or str(user.id)
 

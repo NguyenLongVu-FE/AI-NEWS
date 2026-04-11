@@ -1,28 +1,27 @@
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes
 
-from bot.services.sheets import SheetsService
+from bot.services.sheets import get_sheets_service
 from bot.utils.formatting import format_view_detail, format_error
-
-sheets = SheetsService()
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     data = query.data
+    sheets = get_sheets_service()
 
     if data.startswith("v:"):
         row_id = int(data[2:])
-        await _handle_view(query, row_id)
+        await _handle_view(query, row_id, sheets)
     elif data.startswith("a:del:"):
         row_id = int(data[6:])
-        await _handle_delete_confirm(query, row_id)
+        await _handle_delete_confirm(query, row_id, sheets)
     elif data.startswith("c:del:"):
         parts = data.split(":")
         row_id = int(parts[2])
         confirmed = parts[3] == "y"
-        await _handle_delete_execute(query, row_id, confirmed)
+        await _handle_delete_execute(query, row_id, confirmed, sheets)
     elif data.startswith("a:status:"):
         row_id = int(data[9:])
         await _handle_status_menu(query, row_id)
@@ -30,7 +29,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         row_id = int(parts[2])
         status = parts[3]
-        await _handle_status_set(query, row_id, status)
+        await _handle_status_set(query, row_id, status, sheets)
     elif data.startswith("a:priority:"):
         row_id = int(data[11:])
         await _handle_priority_menu(query, row_id)
@@ -38,10 +37,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         row_id = int(parts[2])
         priority = parts[3]
-        await _handle_priority_set(query, row_id, priority)
+        await _handle_priority_set(query, row_id, priority, sheets)
 
 
-async def _handle_view(query, row_id):
+async def _handle_view(query, row_id, sheets):
     record = sheets.get_row(row_id)
     if not record:
         await query.edit_message_text(
@@ -71,7 +70,7 @@ async def _handle_view(query, row_id):
     )
 
 
-async def _handle_delete_confirm(query, row_id):
+async def _handle_delete_confirm(query, row_id, sheets):
     record = sheets.get_row(row_id)
     title = record.get("Tieu de", "N/A") if record else "N/A"
     keyboard = InlineKeyboardMarkup(
@@ -94,12 +93,12 @@ async def _handle_delete_confirm(query, row_id):
     )
 
 
-async def _handle_delete_execute(query, row_id, confirmed):
+async def _handle_delete_execute(query, row_id, confirmed, sheets):
     if confirmed:
         sheets.delete_row(row_id)
         await query.edit_message_text("✅ <b>Da xoa!</b>", parse_mode="HTML")
     else:
-        await _handle_view(query, row_id)
+        await _handle_view(query, row_id, sheets)
 
 
 async def _handle_status_menu(query, row_id):
@@ -139,9 +138,9 @@ async def _handle_status_menu(query, row_id):
     )
 
 
-async def _handle_status_set(query, row_id, status):
+async def _handle_status_set(query, row_id, status, sheets):
     sheets.update_cell(row_id, 11, status)
-    await _handle_view(query, row_id)
+    await _handle_view(query, row_id, sheets)
 
 
 async def _handle_priority_menu(query, row_id):
@@ -173,9 +172,9 @@ async def _handle_priority_menu(query, row_id):
     )
 
 
-async def _handle_priority_set(query, row_id, priority):
+async def _handle_priority_set(query, row_id, priority, sheets):
     sheets.update_cell(row_id, 10, priority)
-    await _handle_view(query, row_id)
+    await _handle_view(query, row_id, sheets)
 
 
 callback_handler = CallbackQueryHandler(handle_callback)

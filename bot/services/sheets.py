@@ -6,6 +6,16 @@ from gspread.utils import ValueInputOption
 from bot.config import GOOGLE_SHEET_ID, SHEET_HEADERS, get_google_credentials
 
 
+_instance = None
+
+
+def get_sheets_service() -> "SheetsService":
+    global _instance
+    if _instance is None:
+        _instance = SheetsService()
+    return _instance
+
+
 class SheetsService:
     def __init__(self):
         credentials = get_google_credentials()
