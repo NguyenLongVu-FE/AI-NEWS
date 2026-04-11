@@ -2,7 +2,16 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes
 
 from bot.services.sheets import get_sheets_service
+from bot.services.settings import SettingsService
+from bot.services.i18n import t
 from bot.utils.formatting import format_view_detail, format_error
+
+settings_service = SettingsService()
+
+
+def _get_lang(query) -> str:
+    user_id = str(query.from_user.id)
+    return settings_service.get_user_settings(user_id)["language"]
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -44,7 +53,7 @@ async def _handle_view(query, row_id, sheets):
     record = sheets.get_row(row_id)
     if not record:
         await query.edit_message_text(
-            format_error(f"Khong tim thay ID {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', 'vi')} {row_id}"), parse_mode="HTML"
         )
         return
     keyboard = InlineKeyboardMarkup(
@@ -86,8 +95,8 @@ async def _handle_delete_confirm(query, row_id, sheets):
         ]
     )
     await query.edit_message_text(
-        f"🗑️ <b>Xac nhan xoa</b>\n\n📄 <b>{title}</b>\n\n"
-        f"Ban co chac muon xoa?",
+        f"🗑️ <b>{t('delete_confirm', 'vi')}</b>\n\n📄 <b>{title}</b>\n\n"
+        f"{t('delete_confirm_msg', 'vi')}",
         parse_mode="HTML",
         reply_markup=keyboard,
     )
@@ -96,7 +105,7 @@ async def _handle_delete_confirm(query, row_id, sheets):
 async def _handle_delete_execute(query, row_id, confirmed, sheets):
     if confirmed:
         sheets.delete_row(row_id)
-        await query.edit_message_text("✅ <b>Da xoa!</b>", parse_mode="HTML")
+        await query.edit_message_text(f"✅ <b>{t('deleted', 'vi')}</b>", parse_mode="HTML")
     else:
         await _handle_view(query, row_id, sheets)
 

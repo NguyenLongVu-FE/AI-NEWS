@@ -1,52 +1,71 @@
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
+from bot.services.settings import SettingsService
+from bot.services.i18n import t
+
+settings_service = SettingsService()
+
+
+def _get_lang(update: Update) -> str:
+    user_id = str(update.message.from_user.id)
+    return settings_service.get_user_settings(user_id)["language"]
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.message.from_user
     first_name = user.first_name or "ban"
+    lang = _get_lang(update)
     text = (
-        f"👋 Chao <b>{first_name}</b>!\n\n"
-        f"Toi la <b>InfoSaver Bot</b> — giup ban luu va quan ly thong tin "
-        f"tu TikTok, YouTube, Facebook, Web, Twitter/X.\n\n"
-        f"<b>Cach dung:</b>\n"
-        f"▸ Gui link → Bot tu dong luu + tom tat\n"
-        f"▸ Gui link kem: <code>#tag !high @category ghi chu</code>\n"
-        f"▸ Dung lenh de tim kiem, loc, quan ly\n\n"
-        f"<b>Lenh chinh:</b>\n"
-        f"/search <i>tu khoa</i> — Tim kiem\n"
-        f"/filter <i>@category !priority</i> — Loc\n"
-        f"/unread — Chua doc\n"
-        f"/help — Tat ca lenh\n\n"
-        f"Bat dau bang cach gui 1 link vao day! 🚀"
+        f"👋 {t('start_greeting', lang, name=first_name)}\n\n"
+        f"{t('start_bot_name', lang)} — {t('start_description', lang)}\n\n"
+        f"<b>{t('start_howto', lang)}</b>\n"
+        f"▸ {t('start_send_link', lang)}\n"
+        f"▸ {t('start_with_tags', lang)}\n"
+        f"▸ {t('start_commands', lang)}\n\n"
+        f"<b>{t('start_main_commands', lang)}</b>\n"
+        f"{t('start_search', lang)}\n"
+        f"{t('start_filter', lang)}\n"
+        f"{t('start_unread', lang)}\n"
+        f"{t('start_help', lang)}\n\n"
+        f"{t('start_cta', lang)}"
     )
     await update.message.reply_text(text, parse_mode="HTML")
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     text = (
-        "📖 <b>InfoSaver Bot — Huong dan</b>\n\n"
-        "<b>📝 Luu link:</b>\n"
-        "▸ Gui link → Tu dong luu + tom tat AI\n"
-        "▸ Kem: <code>#tag1 #tag2</code> | <code>!high</code> | "
-        "<code>@tech</code> | <i>ghi chu</i>\n\n"
-        "<b>🔍 Tim kiem & Loc:</b>\n"
-        "/search <i>tu khoa</i> — Tim trong tieu de + tom tat\n"
-        "/filter <i>@category !priority</i> — Loc ket hop\n"
-        "/tags — Xem tat ca tags\n"
-        "/unread — Noi dung chua doc\n"
-        "/today — Hom nay\n"
-        "/week — Tuan nay\n\n"
-        "<b>⚙️ Quan ly:</b>\n"
-        "/view <i>ID</i> — Xem chi tiet\n"
-        "/status <i>ID</i> <i>trang thai</i> — Cap nhat trang thai\n"
-        "/note <i>ID</i> <i>noi dung</i> — Them ghi chu\n"
-        "/priority <i>ID</i> <i>level</i> — Doi uu tien\n"
-        "/edit <i>ID</i> <i>field</i> <i>value</i> — Sua noi dung\n"
-        "/delete <i>ID</i> — Xoa\n\n"
-        "<b>📊 Khac:</b>\n"
-        "/sheet — Link Google Sheets\n"
-        "/addcategory <i>ten</i> — Them chu de (admin)"
+        f"📖 <b>{t('help_title', lang)}</b>\n\n"
+        f"<b>📝 {t('help_save_link', lang)}</b>\n"
+        f"▸ {t('help_send_link', lang)}\n"
+        f"▸ {t('help_with_tags', lang)}\n\n"
+        f"<b>🔍 {t('help_search', lang)}</b>\n"
+        f"/search <i>keyword</i>\n"
+        f"/filter <i>@category !priority</i>\n"
+        f"/tags — {t('tags_title', lang)}\n"
+        f"/unread — {t('stats_unread', lang)}\n"
+        f"/today — Today\n"
+        f"/week — This week\n\n"
+        f"<b>⚙️ {t('help_manage', lang)}</b>\n"
+        f"/view <i>ID</i>\n"
+        f"/status <i>ID</i> <i>{t('status_label', lang)}</i>\n"
+        f"/note <i>ID</i> <i>content</i>\n"
+        f"/priority <i>ID</i> <i>{t('priority_label', lang)}</i>\n"
+        f"/edit <i>ID</i> <i>field</i> <i>value</i>\n"
+        f"/delete <i>ID</i>\n\n"
+        f"<b>📤 {t('help_export', lang)}</b>\n"
+        f"{t('help_export_desc', lang)}\n\n"
+        f"<b>⏰ {t('help_remind', lang)}</b>\n"
+        f"{t('help_remind_desc', lang)}\n\n"
+        f"<b>🌐 {t('help_lang', lang)}</b>\n"
+        f"{t('help_lang_desc', lang)}\n\n"
+        f"<b>📊 {t('help_stats', lang)}</b>\n"
+        f"{t('help_stats_desc', lang)}\n"
+        f"/stats week — {t('stats_week', lang)}\n\n"
+        f"<b>📊 Khac:</b>\n"
+        f"/sheet — {t('sheet_title', lang)}\n"
+        f"/addcategory <i>name</i> — (admin)"
     )
     await update.message.reply_text(text, parse_mode="HTML")
 

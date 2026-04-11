@@ -4,16 +4,25 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, ContextTypes
 
 from bot.services.sheets import get_sheets_service
+from bot.services.settings import SettingsService
+from bot.services.i18n import t
 from bot.utils.formatting import format_empty_state
 
 PAGE_SIZE = 5
+settings_service = SettingsService()
+
+
+def _get_lang(update: Update) -> str:
+    user_id = str(update.message.from_user.id)
+    return settings_service.get_user_settings(user_id)["language"]
 
 
 async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     if not context.args:
         await update.message.reply_text(
-            "❌ <b>Cu phap:</b> /search <i>tu khoa</i>\n"
-            "Vi du: /search python",
+            f"❌ <b>{t('search_syntax', lang)}</b> /search <i>keyword</i>\n"
+            f"{t('search_example', lang)}",
             parse_mode="HTML",
         )
         return
@@ -41,27 +50,26 @@ async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     sheets = get_sheets_service()
     records = sheets.get_all_records()
     all_tags = set()
     for r in records:
         tag_str = r.get("Tags", "")
         if tag_str:
-            for t in tag_str.split(","):
-                t = t.strip()
-                if t:
-                    all_tags.add(t)
+            for tg in tag_str.split(","):
+                tg = tg.strip()
+                if tg:
+                    all_tags.add(tg)
     if not all_tags:
         await update.message.reply_text(
-            format_empty_state(
-                "Chua co tags nao. Them tags bang # khi gui link."
-            ),
+            format_empty_state(t("no_tags", lang)),
             parse_mode="HTML",
         )
         return
     tag_list = sorted(all_tags)
-    text = "🏷 <b>Tat ca tags:</b>\n\n" + "\n".join(
-        f"▸ <code>{t}</code>" for t in tag_list
+    text = f"🏷 <b>{t('tags_title', lang)}</b>\n\n" + "\n".join(
+        f"▸ <code>{tg}</code>" for tg in tag_list
     )
     await update.message.reply_text(text, parse_mode="HTML")
 

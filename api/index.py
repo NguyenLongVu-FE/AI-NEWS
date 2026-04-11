@@ -34,6 +34,10 @@ from bot.handlers.manage import (
     addcategory_handler,
 )
 from bot.handlers.callback import callback_handler
+from bot.handlers.lang import lang_handler
+from bot.handlers.export import export_handler
+from bot.handlers.stats import stats_handler
+from bot.handlers.remind import remind_handler
 
 application.add_handler(start_handler)
 application.add_handler(help_handler)
@@ -53,6 +57,10 @@ application.add_handler(view_handler)
 application.add_handler(sheet_handler)
 application.add_handler(addcategory_handler)
 application.add_handler(callback_handler)
+application.add_handler(lang_handler)
+application.add_handler(export_handler)
+application.add_handler(stats_handler)
+application.add_handler(remind_handler)
 
 _initialized = False
 

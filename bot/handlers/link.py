@@ -7,6 +7,8 @@ from bot.services.parser import parse_link_input
 from bot.services.scraper import ScraperService
 from bot.services.gemini import GeminiService
 from bot.services.sheets import get_sheets_service
+from bot.services.settings import SettingsService
+from bot.services.i18n import t
 from bot.utils.formatting import (
     format_save_success,
     format_processing,
@@ -15,6 +17,7 @@ from bot.utils.formatting import (
 
 scraper = ScraperService()
 gemini = GeminiService()
+settings_service = SettingsService()
 
 URL_REGEX = re.compile(r"https?://\S+")
 
@@ -27,6 +30,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     user = update.message.from_user
     user_name = user.first_name or str(user.id)
+    lang = settings_service.get_user_settings(str(user.id))["language"]
 
     parsed = parse_link_input(text)
     url = parsed["url"]
@@ -46,13 +50,11 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         record = sheets.get_row(existing_row)
         if parsed["notes"]:
             sheets.append_note(existing_row, parsed["notes"])
-        note_msg = (
-            "📝 <b>Ghi chu moi da duoc gop</b>" if parsed["notes"] else ""
-        )
+        note_msg = f"📝 <b>{t('notes_merged', lang)}</b>" if parsed["notes"] else ""
         await update.message.reply_text(
-            f"🔁 <b>Link da ton tai!</b>\n\n"
-            f"📄 <b>Tieu de:</b> {record.get('Tieu de', 'N/A')}\n"
-            f"👤 <b>Luu boi:</b> {record.get('Nguoi luu', 'N/A')}\n"
+            f"🔁 <b>{t('link_exists', lang)}</b>\n\n"
+            f"📄 <b>{t('link_title', lang)}</b> {record.get('Tieu de', 'N/A')}\n"
+            f"👤 <b>{t('link_saved_by', lang)}</b> {record.get('Nguoi luu', 'N/A')}\n"
             f"{note_msg}",
             parse_mode="HTML",
         )
@@ -122,9 +124,9 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not metadata["success"]:
         try:
             await update.message.reply_text(
-                f"⚠️ <b>Luu voi canh bao</b>\n\n"
-                f"❌ Khong the lay noi dung day du: {metadata['error']}\n\n"
-                f"Link da duoc luu. Them ghi chu: /note {row_id} <i>noi dung</i>",
+                f"⚠️ <b>{t('save_warning', lang)}</b>\n\n"
+                f"❌ {t('save_warning_desc', lang)} {metadata['error']}\n\n"
+                f"{t('save_warning_hint', lang, id=row_id)}",
                 parse_mode="HTML",
             )
         except Exception:
