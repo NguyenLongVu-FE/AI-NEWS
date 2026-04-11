@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -57,7 +57,7 @@ application.add_handler(callback_handler)
 _initialized = False
 
 
-@app.post("/api/webhook")
+@app.post("/webhook")
 async def webhook(request: Request):
     global _initialized
     if not _initialized:
@@ -69,6 +69,6 @@ async def webhook(request: Request):
     return {"ok": True}
 
 
-@app.get("/api/health")
+@app.get("/health")
 async def health():
     return {"status": "ok", "initialized": _initialized}

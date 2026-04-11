@@ -1,3 +1,8 @@
 {
-  "version": 2
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "api/index.py": {
+      "excludeFiles": "{.planning/**,.env,__pycache__/**,**/*.pyc}"
+    }
+  }
 }

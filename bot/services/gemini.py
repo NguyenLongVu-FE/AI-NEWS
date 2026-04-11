@@ -2,11 +2,10 @@ import google.generativeai as genai
 
 from bot.config import GEMINI_API_KEY
 
-genai.configure(api_key=GEMINI_API_KEY)
-
 
 class GeminiService:
     def __init__(self):
+        genai.configure(api_key=GEMINI_API_KEY)
         self.model = genai.GenerativeModel("gemini-2.5-flash")
 
     def summarize(self, title: str, description: str, url: str) -> str:
