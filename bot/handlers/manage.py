@@ -5,12 +5,15 @@ from bot.config import (
     ADMIN_TELEGRAM_ID,
     CATEGORIES,
     GOOGLE_SHEET_ID,
+    LIBRARY_GROUPS,
     PRIORITY_VALUES,
+    SHEET_HEADERS,
     STATUS_VALUES,
 )
 from bot.services.sheets import get_sheets_service
 from bot.services.settings import SettingsService
 from bot.services.i18n import t
+from bot.services.library_groups import normalize_library_group
 from bot.utils.formatting import format_view_detail, format_error
 
 settings_service = SettingsService()
@@ -201,7 +204,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args or []) < 3:
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /edit <i>ID</i> <i>field</i> <i>value</i>\n"
-            f"{t('fields_label', lang)}: title, notes, category, tags\n"
+            f"{t('fields_label', lang)}: title, notes, category, tags, library_group\n"
             f"{_example(lang, '/edit 42 title New title')}",
             parse_mode="HTML",
         )
@@ -215,7 +218,13 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     field = context.args[1].lower()
     value = " ".join(context.args[2:])
-    col_map = {"title": 3, "notes": 7, "category": 8, "tags": 9}
+    col_map = {
+        "title": 3,
+        "notes": 7,
+        "category": 8,
+        "tags": 9,
+        "library_group": SHEET_HEADERS.index("Library Group") + 1,
+    }
     if field not in col_map:
         await update.message.reply_text(
             format_error(
@@ -231,10 +240,38 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
-    sheets.update_cell(row_id, col_map[field], value)
+    value_to_save = value
+    if field == "library_group":
+        normalized_group = normalize_library_group(value)
+        if not normalized_group:
+            await update.message.reply_text(
+                format_error(
+                    t("lib_invalid_group", lang, group=value.strip() or "?"),
+                    t("lib_valid_groups", lang, groups=", ".join(LIBRARY_GROUPS)),
+                    lang=lang,
+                ),
+                parse_mode="HTML",
+            )
+            return
+        value_to_save = normalized_group
+
+    sheets.update_cell(row_id, col_map[field], value_to_save)
+
+    if field == "library_group":
+        old_group = normalize_library_group(record.get("Library Group")) or "utils"
+        if old_group != value_to_save:
+            updated_record = dict(record)
+            updated_record["Library Group"] = value_to_save
+            record_id = str(updated_record.get("ID", "")).strip() or str(row_id)
+            try:
+                sheets.remove_library_row(record_id, old_group)
+                sheets.upsert_library_row(updated_record)
+            except Exception:
+                pass
+
     await update.message.reply_text(
         f"✅ <b>{t('edit_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
-        f"✏️ {field}: → {value}",
+        f"✏️ {field}: → {value_to_save}",
         parse_mode="HTML",
     )
 

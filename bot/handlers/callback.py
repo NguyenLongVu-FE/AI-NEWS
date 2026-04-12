@@ -4,6 +4,7 @@ from telegram.ext import CallbackQueryHandler, ContextTypes
 from bot.services.sheets import get_sheets_service
 from bot.services.settings import SettingsService
 from bot.services.i18n import t
+from bot.services.library_groups import normalize_library_group
 from bot.utils.formatting import format_view_detail, format_error
 
 settings_service = SettingsService()
@@ -105,7 +106,15 @@ async def _handle_delete_confirm(query, row_id, sheets, lang: str):
 
 async def _handle_delete_execute(query, row_id, confirmed, sheets, lang: str):
     if confirmed:
+        record = sheets.get_row(row_id)
         sheets.delete_row(row_id)
+        if record:
+            record_id = str(record.get("ID", "")).strip() or str(row_id)
+            record_group = normalize_library_group(record.get("Library Group")) or "utils"
+            try:
+                sheets.remove_library_row(record_id, record_group)
+            except Exception:
+                pass
         await query.edit_message_text(f"✅ <b>{t('deleted', lang)}</b>", parse_mode="HTML")
     else:
         await _handle_view(query, row_id, sheets, lang)

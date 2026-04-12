@@ -4,6 +4,7 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import MessageHandler, filters, ContextTypes
 
 from bot.services.parser import parse_link_input
+from bot.services.library_groups import detect_library_group, normalize_library_group
 from bot.services.scraper import ScraperService
 from bot.services.gemini import GeminiService
 from bot.services.sheets import get_sheets_service
@@ -94,6 +95,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif not ai_summary:
         ai_summary = t("no_summary", lang)
 
+    library_group = normalize_library_group(parsed.get("library_group_override"))
+    if not library_group:
+        library_group = detect_library_group(url, title, ai_summary)
+
     row_id = sheets.append_link(
         url=url,
         title=title,
@@ -106,6 +111,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status="chua_doc",
         user_name=user_name,
         thumbnail=thumbnail,
+        library_group=library_group,
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -138,6 +144,13 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             success_text, parse_mode="HTML", reply_markup=keyboard
         )
+
+    try:
+        saved_record = sheets.get_row(row_id)
+        if saved_record:
+            sheets.upsert_library_row(saved_record)
+    except Exception:
+        pass
 
     if not metadata["success"]:
         try:
