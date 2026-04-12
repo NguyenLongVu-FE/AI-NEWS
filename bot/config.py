@@ -31,6 +31,16 @@ CATEGORIES = [
 
 STATUS_VALUES = ["chua_doc", "dang_doc", "da_nghien_cuu", "da_ap_dung"]
 PRIORITY_VALUES = ["high", "medium", "low"]
+LIBRARY_GROUPS = [
+    "animation",
+    "shadcn",
+    "icons",
+    "charts",
+    "forms",
+    "table",
+    "state-management",
+    "utils",
+]
 
 SHEET_HEADERS = [
     "ID",

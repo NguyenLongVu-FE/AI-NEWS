@@ -9,12 +9,14 @@ def parse_link_input(text: str) -> dict:
     tags = []
     priority = "medium"
     category = ""
+    library_group_override = ""
     notes = []
 
     url_pattern = re.compile(r"https?://\S+")
     tag_pattern = re.compile(r"#(\w+)")
     priority_pattern = re.compile(r"!(high|medium|low)", re.IGNORECASE)
     category_pattern = re.compile(r"@(\w+)")
+    library_group_pattern = re.compile(r"~([a-zA-Z0-9-]+)")
 
     for line in lines:
         line = line.strip()
@@ -37,11 +39,16 @@ def parse_link_input(text: str) -> dict:
             cat = category_match.group(1)
             category = _match_category(cat)
 
+        group_match = library_group_pattern.search(line)
+        if group_match:
+            library_group_override = group_match.group(1).lower()
+
         remaining = line
         remaining = url_pattern.sub("", remaining)
         remaining = tag_pattern.sub("", remaining)
         remaining = priority_pattern.sub("", remaining)
         remaining = category_pattern.sub("", remaining)
+        remaining = library_group_pattern.sub("", remaining)
         remaining = remaining.strip()
         if remaining and not remaining.startswith("http"):
             notes.append(remaining)
@@ -52,6 +59,7 @@ def parse_link_input(text: str) -> dict:
         "priority": priority,
         "category": category or "Other",
         "notes": " ".join(notes),
+        "library_group_override": library_group_override,
     }
 
 
