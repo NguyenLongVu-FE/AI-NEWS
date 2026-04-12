@@ -4,6 +4,8 @@ from gspread.utils import ValueInputOption, rowcol_to_a1
 from bot.config import SHEET_HEADERS
 from bot.services.sheets import SheetsService
 
+LEGACY_SHEET_HEADERS = [header for header in SHEET_HEADERS if header != "Library Group"]
+
 
 class _FakeCell:
     def __init__(self, value=""):
@@ -135,6 +137,37 @@ def test_ensure_headers_uses_range_for_current_header_count():
     assert main_sheet.headers == SHEET_HEADERS
 
 
+def test_ensure_headers_migrates_legacy_layout_and_preserves_reminder_values():
+    service, main_sheet, _ = _make_service(
+        headers=LEGACY_SHEET_HEADERS,
+        rows=[
+            [
+                "1",
+                "2024-01-02 03:04:05",
+                "Legacy row",
+                "https://example.com",
+                "example.com",
+                "summary",
+                "notes",
+                "Tech",
+                "legacy",
+                "high",
+                "chua_doc",
+                "tester",
+                "thumb.png",
+                "2026-06-01",
+            ]
+        ],
+    )
+
+    service._ensure_headers()
+
+    migrated_row = main_sheet.data_rows[0]
+    assert main_sheet.headers == SHEET_HEADERS
+    assert migrated_row[SHEET_HEADERS.index("Library Group")] == ""
+    assert migrated_row[SHEET_HEADERS.index("Nhac nho")] == "2026-06-01"
+
+
 def test_append_link_defaults_library_group_to_utils():
     service, main_sheet, _ = _make_service()
     service.get_next_id = lambda: 10
@@ -217,6 +250,15 @@ def test_remove_library_row_deletes_row_by_id():
     service.remove_library_row("2", "icons")
 
     assert [row[0] for row in mirror_sheet.data_rows] == ["1"]
+
+
+def test_remove_library_row_does_not_create_mirror_sheet_when_missing():
+    service, _, spreadsheet = _make_service()
+
+    service.remove_library_row("2", "icons")
+
+    assert spreadsheet.add_calls == []
+    assert "LIB_icons" not in spreadsheet._worksheets
 
 
 def test_backfill_library_groups_updates_only_missing_entries():

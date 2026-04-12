@@ -30,10 +30,34 @@ class SheetsService:
     def _ensure_headers(self):
         ws = self.spreadsheet.sheet1
         current_headers = ws.row_values(1)
+        legacy_headers = [
+            header for header in SHEET_HEADERS if header != "Library Group"
+        ]
+
+        if current_headers == legacy_headers:
+            self._migrate_legacy_headers(ws)
+            return
+
         if current_headers != SHEET_HEADERS:
             ws.update(
                 range_name=self._sheet_header_range(),
                 values=[SHEET_HEADERS],
+                value_input_option="RAW",
+            )
+
+    def _migrate_legacy_headers(self, ws):
+        legacy_records = ws.get_all_records()
+        ws.update(
+            range_name=self._sheet_header_range(),
+            values=[SHEET_HEADERS],
+            value_input_option="RAW",
+        )
+
+        for row_index, record in enumerate(legacy_records, start=2):
+            migrated_row = [record.get(header, "") for header in SHEET_HEADERS]
+            ws.update(
+                range_name=f"A{row_index}:{rowcol_to_a1(row_index, len(SHEET_HEADERS))}",
+                values=[migrated_row],
                 value_input_option="RAW",
             )
 
@@ -107,21 +131,29 @@ class SheetsService:
         return f"LIB_{key}"
 
     def ensure_library_sheet(self, group: str):
+        ws = self._get_library_sheet(group)
+        if ws is not None:
+            return ws
+
+        name = self._library_sheet_name(group)
+        ws = self.spreadsheet.add_worksheet(
+            title=name,
+            rows=1000,
+            cols=len(SHEET_HEADERS),
+        )
+        ws.update(
+            range_name=self._sheet_header_range(),
+            values=[SHEET_HEADERS],
+            value_input_option="RAW",
+        )
+        return ws
+
+    def _get_library_sheet(self, group: str):
         name = self._library_sheet_name(group)
         try:
             return self.spreadsheet.worksheet(name)
         except gspread.WorksheetNotFound:
-            ws = self.spreadsheet.add_worksheet(
-                title=name,
-                rows=1000,
-                cols=len(SHEET_HEADERS),
-            )
-            ws.update(
-                range_name=self._sheet_header_range(),
-                values=[SHEET_HEADERS],
-                value_input_option="RAW",
-            )
-            return ws
+            return None
 
     def filter_by_library_group(self, group: str):
         group_key = str(group or "").strip().lower()
@@ -163,7 +195,10 @@ class SheetsService:
         if not group_key or not row_key:
             return
 
-        ws = self.ensure_library_sheet(group_key)
+        ws = self._get_library_sheet(group_key)
+        if ws is None:
+            return
+
         ids = ws.col_values(1)
         if row_key in ids:
             row_number = ids.index(row_key) + 1
