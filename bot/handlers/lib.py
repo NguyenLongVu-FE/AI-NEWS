@@ -3,7 +3,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.config import LIBRARY_GROUPS
+from bot.config import LIBRARY_GROUPS, SHEET_HEADERS
 from bot.services.i18n import t
 from bot.services.library_groups import normalize_library_group
 from bot.services.settings import SettingsService
@@ -30,10 +30,23 @@ def _get_lang(update: Update) -> str:
 def _count_groups(records: list[dict]) -> dict[str, int]:
     counts = {group: 0 for group in LIBRARY_GROUPS}
     for record in records:
-        raw_group = str(record.get("Library Group", "")).strip()
-        group = normalize_library_group(raw_group)
-        counts[group or "utils"] += 1
+        counts[_normalize_record_group(record)] += 1
     return counts
+
+
+def _normalize_record_group(record: dict) -> str:
+    raw_group = str(record.get("Library Group", "")).strip()
+    return normalize_library_group(raw_group) or "utils"
+
+
+def _filter_records_by_group(records: list[dict], group: str) -> list[dict]:
+    return [record for record in records if _normalize_record_group(record) == group]
+
+
+def _record_to_sheet_row(record: dict) -> list[str]:
+    row_record = dict(record)
+    row_record["Library Group"] = _normalize_record_group(record)
+    return [row_record.get(header, "") for header in SHEET_HEADERS]
 
 
 def _group_preview(results: list[dict]) -> str:
@@ -83,7 +96,7 @@ async def _show_group_results(update: Update, lang: str, group_value: str):
         return
 
     sheets = get_sheets_service()
-    results = sheets.filter_by_library_group(group)
+    results = _filter_records_by_group(sheets.get_all_records(), group)
 
     if not results:
         await update.message.reply_text(
@@ -126,23 +139,28 @@ async def _ensure_group_sheet(update: Update, lang: str, args: list[str]):
         return
 
     sheets = get_sheets_service()
-    source_records = sheets.filter_by_library_group(group)
+    source_records = _filter_records_by_group(sheets.get_all_records(), group)
     mirror_sheet = sheets.ensure_library_sheet(group)
-
-    for record in source_records:
-        sheets.upsert_library_row(record)
+    mirror_records = mirror_sheet.get_all_records()
 
     source_ids = {
         str(record.get("ID", "")).strip()
         for record in source_records
         if str(record.get("ID", "")).strip()
     }
-    removed = 0
-    for mirror_record in mirror_sheet.get_all_records():
-        mirror_id = str(mirror_record.get("ID", "")).strip()
-        if mirror_id and mirror_id not in source_ids:
-            sheets.remove_library_row(mirror_id, group)
-            removed += 1
+    removed = sum(
+        1
+        for mirror_record in mirror_records
+        if (mirror_id := str(mirror_record.get("ID", "")).strip())
+        and mirror_id not in source_ids
+    )
+
+    mirror_sheet.clear()
+    mirror_sheet.update(
+        range_name="A1",
+        values=[SHEET_HEADERS, *[_record_to_sheet_row(record) for record in source_records]],
+        value_input_option="RAW",
+    )
 
     sheet_name = escape(getattr(mirror_sheet, "title", f"LIB_{group}"))
     text = (

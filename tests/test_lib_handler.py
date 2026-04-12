@@ -36,15 +36,39 @@ class _FakeMirrorSheet:
     def __init__(self, title: str, records=None):
         self.title = title
         self._records = list(records or [])
+        self.clear_calls = 0
+        self.update_calls = []
 
     def get_all_records(self):
         return list(self._records)
+
+    def clear(self):
+        self.clear_calls += 1
+        self._records = []
+
+    def update(self, *, range_name: str, values: list[list], value_input_option: str):
+        self.update_calls.append(
+            {
+                "range_name": range_name,
+                "values": values,
+                "value_input_option": value_input_option,
+            }
+        )
+        if not values:
+            self._records = []
+            return
+
+        headers = list(values[0])
+        self._records = []
+        for row in values[1:]:
+            padded = list(row) + [""] * (len(headers) - len(row))
+            self._records.append(dict(zip(headers, padded)))
 
 
 class _FakeSheetsService:
     def __init__(self, records, mirror_records=None):
         self.records = list(records)
-        self.mirror = _FakeMirrorSheet("LIB_shadcn", records=mirror_records or [])
+        self.mirror = _FakeMirrorSheet("LIB_utils", records=mirror_records or [])
         self.ensure_calls = []
         self.upsert_calls = []
         self.remove_calls = []
@@ -62,6 +86,7 @@ class _FakeSheetsService:
 
     def ensure_library_sheet(self, group: str):
         self.ensure_calls.append(group)
+        self.mirror.title = f"LIB_{group}"
         return self.mirror
 
     def upsert_library_row(self, record: dict):
@@ -140,7 +165,57 @@ async def test_lib_group_returns_summary_preview(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_lib_sheet_ensures_mirror_backfills_and_cleans(monkeypatch):
+async def test_lib_utils_group_includes_blank_or_invalid_rows(monkeypatch):
+    _setup_lang(monkeypatch, "en")
+    sheets = _FakeSheetsService(
+        [
+            {"ID": "1", "Library Group": "utils", "Tieu de": "Tooling", "Nguon": "example.com"},
+            {"ID": "2", "Library Group": "", "Tieu de": "Legacy Blank", "Nguon": "example.com"},
+            {"ID": "3", "Library Group": "legacy", "Tieu de": "Legacy Invalid", "Nguon": "example.com"},
+            {"ID": "4", "Library Group": "icons", "Tieu de": "Lucide", "Nguon": "lucide.dev"},
+        ]
+    )
+    _setup_sheets(monkeypatch, sheets)
+    update = _DummyUpdate()
+
+    await lib_module.lib_cmd(update, _DummyContext(args=["utils"]))
+
+    text = update.message.replies[0]["text"]
+    assert "Group: utils" in text
+    assert "Found <b>3</b> results" in text
+    assert "<code>#1</code> Tooling" in text
+    assert "<code>#2</code> Legacy Blank" in text
+    assert "<code>#3</code> Legacy Invalid" in text
+
+
+@pytest.mark.asyncio
+async def test_lib_sheet_utils_backfills_blank_group_rows(monkeypatch):
+    _setup_lang(monkeypatch, "en")
+    sheets = _FakeSheetsService(
+        [
+            {"ID": "1", "Library Group": "", "Tieu de": "Blank Group"},
+            {"ID": "2", "Library Group": "utils", "Tieu de": "Utils Group"},
+            {"ID": "3", "Library Group": "icons", "Tieu de": "Icon Group"},
+        ]
+    )
+    _setup_sheets(monkeypatch, sheets)
+    update = _DummyUpdate()
+
+    await lib_module.lib_cmd(update, _DummyContext(args=["sheet", "utils"]))
+
+    text = update.message.replies[0]["text"]
+    assert sheets.ensure_calls == ["utils"]
+    assert sheets.mirror.clear_calls == 1
+    assert len(sheets.mirror.update_calls) == 1
+    values = sheets.mirror.update_calls[0]["values"]
+    assert [row[0] for row in values[1:]] == ["1", "2"]
+    group_col = lib_module.SHEET_HEADERS.index("Library Group")
+    assert [row[group_col] for row in values[1:]] == ["utils", "utils"]
+    assert "Backfill: 2 | Cleanup: 0" in text
+
+
+@pytest.mark.asyncio
+async def test_lib_sheet_ensures_mirror_backfills_and_reports_cleanup(monkeypatch):
     _setup_lang(monkeypatch, "en")
     sheets = _FakeSheetsService(
         [
@@ -157,8 +232,10 @@ async def test_lib_sheet_ensures_mirror_backfills_and_cleans(monkeypatch):
 
     text = update.message.replies[0]["text"]
     assert sheets.ensure_calls == ["shadcn"]
-    assert [record["ID"] for record in sheets.upsert_calls] == ["1", "2"]
-    assert sheets.remove_calls == [("99", "shadcn")]
+    assert sheets.mirror.clear_calls == 1
+    assert len(sheets.mirror.update_calls) == 1
+    values = sheets.mirror.update_calls[0]["values"]
+    assert [row[0] for row in values[1:]] == ["1", "2"]
     assert "Synced sheet LIB_shadcn" in text
     assert "Backfill: 2 | Cleanup: 1" in text
 
