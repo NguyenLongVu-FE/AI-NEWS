@@ -6,7 +6,13 @@ from bot.services.sheets import get_sheets_service
 
 class StatsService:
     def __init__(self):
-        self.sheets = get_sheets_service()
+        self._sheets = None
+
+    @property
+    def sheets(self):
+        if self._sheets is None:
+            self._sheets = get_sheets_service()
+        return self._sheets
 
     def get_stats(self, period: str = "month") -> dict:
         records = self.sheets.get_all_records()

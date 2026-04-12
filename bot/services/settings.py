@@ -8,7 +8,13 @@ SETTINGS_HEADERS = ["user_id", "language", "remind_enabled"]
 
 class SettingsService:
     def __init__(self):
-        self.sheets = get_sheets_service()
+        self._sheets = None
+
+    @property
+    def sheets(self):
+        if self._sheets is None:
+            self._sheets = get_sheets_service()
+        return self._sheets
 
     def _get_settings_sheet(self):
         spreadsheet = self.sheets.spreadsheet

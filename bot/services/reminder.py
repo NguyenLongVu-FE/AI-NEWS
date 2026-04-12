@@ -7,8 +7,14 @@ from bot.services.i18n import t
 
 class ReminderService:
     def __init__(self):
-        self.sheets = get_sheets_service()
+        self._sheets = None
         self.settings = SettingsService()
+
+    @property
+    def sheets(self):
+        if self._sheets is None:
+            self._sheets = get_sheets_service()
+        return self._sheets
 
     def get_digest(self, user_id: str) -> str:
         lang = self.settings.get_user_settings(user_id)["language"]
