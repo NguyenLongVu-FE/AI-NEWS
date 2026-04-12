@@ -36,6 +36,7 @@ def _install_handler_stubs():
         "bot.handlers.callback": ["callback_handler"],
         "bot.handlers.lang": ["lang_handler"],
         "bot.handlers.export": ["export_handler"],
+        "bot.handlers.lib": ["lib_handler"],
         "bot.handlers.stats": ["stats_handler"],
         "bot.handlers.remind": ["remind_handler"],
     }
