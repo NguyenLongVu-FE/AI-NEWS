@@ -574,6 +574,20 @@ async def test_status_and_priority_commands_sync_mirror(
 
 
 @pytest.mark.asyncio
+async def test_view_command_uses_logical_id_lookup(monkeypatch):
+    sheets = _ManageSheets()
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    await manage_module.view_cmd(update, _DummyContext(args=["15"]))
+
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [15]
+    assert update.message.replies
+    assert "Lucide" in update.message.replies[0]["text"]
+
+
+@pytest.mark.asyncio
 async def test_delete_command_confirmation_uses_logical_id_lookup(monkeypatch):
     sheets = _ManageSheets()
     manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
