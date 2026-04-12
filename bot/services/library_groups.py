@@ -31,13 +31,22 @@ def normalize_library_group(value: str | None) -> str | None:
 
 
 def detect_library_group(url: str, title: str = "", summary: str = "") -> str:
-    host = (urlparse(url).hostname or "").lower()
+    parsed_url = urlparse(url)
+    host = (parsed_url.hostname or "").lower()
+    path = (parsed_url.path or "").lower().rstrip("/")
     content = f"{url} {title} {summary}".lower()
 
     for rule, group in DOMAIN_RULES.items():
-        rule_host = (urlparse(f"https://{rule}").hostname or "").lower()
-        if rule_host and rule_host in host:
-            return group
+        parsed_rule = urlparse(f"https://{rule}")
+        rule_host = (parsed_rule.hostname or "").lower()
+        rule_path = (parsed_rule.path or "").lower().rstrip("/")
+        if not rule_host:
+            continue
+        if host != rule_host and not host.endswith(f".{rule_host}"):
+            continue
+        if rule_path and path != rule_path and not path.startswith(f"{rule_path}/"):
+            continue
+        return group
 
     for keyword, group in KEYWORD_RULES.items():
         if keyword in content:

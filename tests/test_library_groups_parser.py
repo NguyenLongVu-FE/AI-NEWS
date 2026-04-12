@@ -32,5 +32,10 @@ def test_detect_library_group_ignores_domain_rules_in_title_text():
     assert group == "utils"
 
 
+def test_detect_library_group_tanstack_query_is_not_table():
+    group = detect_library_group("https://tanstack.com/query", "TanStack Query docs", "")
+    assert group == "utils"
+
+
 def test_normalize_library_group_unknown_returns_none():
     assert normalize_library_group("something-random") is None
