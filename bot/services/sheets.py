@@ -1,7 +1,7 @@
 from datetime import datetime
 
 import gspread
-from gspread.utils import ValueInputOption
+from gspread.utils import ValueInputOption, rowcol_to_a1
 
 from bot.config import GOOGLE_SHEET_ID, SHEET_HEADERS, get_google_credentials
 
@@ -29,8 +29,17 @@ class SheetsService:
 
     def _ensure_headers(self):
         ws = self.spreadsheet.sheet1
-        if ws.acell("A1").value != "ID":
-            ws.update(range_name="A1:N1", values=[SHEET_HEADERS], value_input_option="RAW")
+        current_headers = ws.row_values(1)
+        if current_headers != SHEET_HEADERS:
+            ws.update(
+                range_name=self._sheet_header_range(),
+                values=[SHEET_HEADERS],
+                value_input_option="RAW",
+            )
+
+    @staticmethod
+    def _sheet_header_range() -> str:
+        return f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
 
     def _get_worksheet(self):
         return self.spreadsheet.sheet1
@@ -67,10 +76,12 @@ class SheetsService:
         user_name: str,
         thumbnail: str,
         reminder_date: str = "",
+        library_group: str = "utils",
     ):
         ws = self._get_worksheet()
         row_id = self.get_next_id()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        normalized_group = str(library_group or "utils").strip().lower() or "utils"
         row = [
             row_id,
             now,
@@ -85,10 +96,97 @@ class SheetsService:
             status,
             user_name,
             thumbnail,
+            normalized_group,
             reminder_date,
         ]
         ws.append_row(row, value_input_option=ValueInputOption.raw)
         return row_id
+
+    def _library_sheet_name(self, group: str) -> str:
+        key = str(group or "").strip().lower() or "utils"
+        return f"LIB_{key}"
+
+    def ensure_library_sheet(self, group: str):
+        name = self._library_sheet_name(group)
+        try:
+            return self.spreadsheet.worksheet(name)
+        except gspread.WorksheetNotFound:
+            ws = self.spreadsheet.add_worksheet(
+                title=name,
+                rows=1000,
+                cols=len(SHEET_HEADERS),
+            )
+            ws.update(
+                range_name=self._sheet_header_range(),
+                values=[SHEET_HEADERS],
+                value_input_option="RAW",
+            )
+            return ws
+
+    def filter_by_library_group(self, group: str):
+        group_key = str(group or "").strip().lower()
+        if not group_key:
+            return []
+        return [
+            record
+            for record in self.get_all_records()
+            if str(record.get("Library Group", "")).strip().lower() == group_key
+        ]
+
+    def upsert_library_row(self, record: dict):
+        group = str(record.get("Library Group", "")).strip().lower()
+        if not group:
+            return
+
+        row_id = str(record.get("ID", "")).strip()
+        if not row_id:
+            return
+
+        ws = self.ensure_library_sheet(group)
+        ids = ws.col_values(1)
+        row = [record.get(header, "") for header in SHEET_HEADERS]
+
+        if row_id in ids:
+            row_number = ids.index(row_id) + 1
+            ws.update(
+                range_name=f"A{row_number}:{rowcol_to_a1(row_number, len(SHEET_HEADERS))}",
+                values=[row],
+                value_input_option="RAW",
+            )
+            return
+
+        ws.append_row(row, value_input_option=ValueInputOption.raw)
+
+    def remove_library_row(self, row_id: str, group: str):
+        group_key = str(group or "").strip().lower()
+        row_key = str(row_id or "").strip()
+        if not group_key or not row_key:
+            return
+
+        ws = self.ensure_library_sheet(group_key)
+        ids = ws.col_values(1)
+        if row_key in ids:
+            row_number = ids.index(row_key) + 1
+            if row_number > 1:
+                ws.delete_rows(row_number)
+
+    def backfill_library_groups(self, detect_group_fn):
+        ws = self._get_worksheet()
+        group_col = SHEET_HEADERS.index("Library Group") + 1
+        records = self.get_all_records()
+
+        for idx, record in enumerate(records, start=2):
+            existing_group = str(record.get("Library Group", "")).strip()
+            if existing_group:
+                continue
+
+            detected_group = detect_group_fn(
+                str(record.get("Link goc", "")),
+                str(record.get("Tieu de", "")),
+                str(record.get("Tom tat AI", "")),
+            )
+            group = str(detected_group or "utils").strip().lower() or "utils"
+            ws.update_cell(idx, group_col, group)
 
     def update_cell(self, row: int, col: int, value: str):
         ws = self._get_worksheet()

@@ -56,5 +56,6 @@ SHEET_HEADERS = [
     "Trang thai",
     "Nguoi luu",
     "Thumbnail",
+    "Library Group",
     "Nhac nho",
 ]
