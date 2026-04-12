@@ -28,6 +28,19 @@ def _example(lang: str, command: str) -> str:
     return f"{t('example_prefix', lang)}: {command}"
 
 
+def _get_record_by_id(sheets, row_id: int):
+    if hasattr(sheets, "get_row_by_id"):
+        return sheets.get_row_by_id(row_id)
+    return sheets.get_row(row_id)
+
+
+def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
+    if hasattr(sheets, "update_cell_by_id"):
+        return sheets.update_cell_by_id(row_id, col, value)
+    sheets.update_cell(row_id, col, value)
+    return True
+
+
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     lang = _get_lang(update)
@@ -234,7 +247,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
@@ -255,7 +268,11 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         value_to_save = normalized_group
 
-    sheets.update_cell(row_id, col_map[field], value_to_save)
+    if not _update_cell_by_id(sheets, row_id, col_map[field], value_to_save):
+        await update.message.reply_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
+        )
+        return
 
     if field == "library_group":
         old_group = normalize_library_group(record.get("Library Group")) or "utils"

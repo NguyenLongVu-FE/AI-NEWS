@@ -29,6 +29,12 @@ def _get_lang(update: Update) -> str:
     return settings_service.get_user_settings(user_id)["language"]
 
 
+def _get_row_by_logical_id(sheets, row_id: int):
+    if hasattr(sheets, "get_row_by_id"):
+        return sheets.get_row_by_id(row_id)
+    return sheets.get_row(row_id)
+
+
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if not URL_REGEX.search(text):
@@ -146,7 +152,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     try:
-        saved_record = sheets.get_row(row_id)
+        saved_record = _get_row_by_logical_id(sheets, row_id)
         if saved_record:
             sheets.upsert_library_row(saved_record)
     except Exception:

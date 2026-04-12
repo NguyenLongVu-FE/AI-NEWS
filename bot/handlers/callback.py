@@ -15,6 +15,19 @@ def _get_lang(query) -> str:
     return settings_service.get_user_settings(user_id)["language"]
 
 
+def _get_record_by_id(sheets, row_id: int):
+    if hasattr(sheets, "get_row_by_id"):
+        return sheets.get_row_by_id(row_id)
+    return sheets.get_row(row_id)
+
+
+def _delete_row_by_id(sheets, row_id: int) -> bool:
+    if hasattr(sheets, "delete_row_by_id"):
+        return sheets.delete_row_by_id(row_id)
+    sheets.delete_row(row_id)
+    return True
+
+
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -52,7 +65,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def _handle_view(query, row_id, sheets, lang: str):
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await query.edit_message_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
@@ -82,7 +95,7 @@ async def _handle_view(query, row_id, sheets, lang: str):
 
 
 async def _handle_delete_confirm(query, row_id, sheets, lang: str):
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     title = record.get("Tieu de", "N/A") if record else "N/A"
     keyboard = InlineKeyboardMarkup(
         [
@@ -106,8 +119,13 @@ async def _handle_delete_confirm(query, row_id, sheets, lang: str):
 
 async def _handle_delete_execute(query, row_id, confirmed, sheets, lang: str):
     if confirmed:
-        record = sheets.get_row(row_id)
-        sheets.delete_row(row_id)
+        record = _get_record_by_id(sheets, row_id)
+        if not _delete_row_by_id(sheets, row_id):
+            await query.edit_message_text(
+                format_error(f"{t('not_found', lang)} {row_id}", lang=lang),
+                parse_mode="HTML",
+            )
+            return
         if record:
             record_id = str(record.get("ID", "")).strip() or str(row_id)
             record_group = normalize_library_group(record.get("Library Group")) or "utils"

@@ -249,6 +249,45 @@ class SheetsService:
         keys = SHEET_HEADERS
         return dict(zip(keys, values + [""] * (len(keys) - len(values))))
 
+    def resolve_row_index_by_id(self, row_id: int | str):
+        row_key = str(row_id or "").strip()
+        if not row_key:
+            return None
+
+        ws = self._get_worksheet()
+        ids = ws.col_values(1)
+        for row_number, current_id in enumerate(ids[1:], start=2):
+            if str(current_id).strip() == row_key:
+                return row_number
+        return None
+
+    def get_row_by_id(self, row_id: int | str):
+        row_number = self.resolve_row_index_by_id(row_id)
+        if row_number is None:
+            return None
+        return self.get_row(row_number)
+
+    def update_cell_by_id(self, row_id: int | str, col: int, value: str) -> bool:
+        row_number = self.resolve_row_index_by_id(row_id)
+        if row_number is None:
+            return False
+        self.update_cell(row_number, col, value)
+        return True
+
+    def append_note_by_id(self, row_id: int | str, note: str) -> bool:
+        row_number = self.resolve_row_index_by_id(row_id)
+        if row_number is None:
+            return False
+        self.append_note(row_number, note)
+        return True
+
+    def delete_row_by_id(self, row_id: int | str) -> bool:
+        row_number = self.resolve_row_index_by_id(row_id)
+        if row_number is None:
+            return False
+        self.delete_row(row_number)
+        return True
+
     def search(self, keyword: str):
         records = self.get_all_records()
         keyword = keyword.lower()

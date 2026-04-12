@@ -101,6 +101,7 @@ class _LinkSheets:
         self.append_kwargs = None
         self.upsert_records = []
         self.get_row_calls = []
+        self.get_row_by_id_calls = []
 
     def find_by_url(self, _url: str):
         return None
@@ -111,8 +112,12 @@ class _LinkSheets:
 
     def get_row(self, row: int):
         self.get_row_calls.append(row)
+        return {"ID": "999", "Library Group": "wrong", "Tieu de": "Wrong row"}
+
+    def get_row_by_id(self, row_id: int):
+        self.get_row_by_id_calls.append(row_id)
         return {
-            "ID": "9",
+            "ID": str(row_id),
             "Library Group": self.append_kwargs.get("library_group", ""),
             "Tieu de": "Button docs",
         }
@@ -126,14 +131,26 @@ class _LinkSheets:
 class _ManageSheets:
     def __init__(self):
         self.update_cell_calls = []
+        self.update_cell_by_id_calls = []
         self.remove_calls = []
         self.upsert_calls = []
+        self.get_row_calls = []
+        self.get_row_by_id_calls = []
 
-    def get_row(self, _row: int):
-        return {"ID": "15", "Library Group": "icons", "Tieu de": "Lucide"}
+    def get_row(self, row: int):
+        self.get_row_calls.append(row)
+        return {"ID": "99", "Library Group": "forms", "Tieu de": "Wrong row"}
+
+    def get_row_by_id(self, row_id: int):
+        self.get_row_by_id_calls.append(row_id)
+        return {"ID": str(row_id), "Library Group": "icons", "Tieu de": "Lucide"}
 
     def update_cell(self, row: int, col: int, value: str):
         self.update_cell_calls.append((row, col, value))
+
+    def update_cell_by_id(self, row_id: int, col: int, value: str):
+        self.update_cell_by_id_calls.append((row_id, col, value))
+        return True
 
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
@@ -145,13 +162,25 @@ class _ManageSheets:
 class _CallbackSheets:
     def __init__(self):
         self.deleted_rows = []
+        self.deleted_row_ids = []
         self.remove_calls = []
+        self.get_row_calls = []
+        self.get_row_by_id_calls = []
 
-    def get_row(self, _row: int):
-        return {"ID": "7", "Library Group": "icons", "Tieu de": "Icon docs"}
+    def get_row(self, row: int):
+        self.get_row_calls.append(row)
+        return {"ID": "99", "Library Group": "forms", "Tieu de": "Wrong row"}
+
+    def get_row_by_id(self, row_id: int):
+        self.get_row_by_id_calls.append(row_id)
+        return {"ID": str(row_id), "Library Group": "icons", "Tieu de": "Icon docs"}
 
     def delete_row(self, row: int):
         self.deleted_rows.append(row)
+
+    def delete_row_by_id(self, row_id: int):
+        self.deleted_row_ids.append(row_id)
+        return True
 
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
@@ -202,10 +231,64 @@ async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(mo
     await link_module.handle_link(update, _DummyContext())
 
     assert sheets.append_kwargs["library_group"] == "shadcn"
-    assert sheets.get_row_calls == [9]
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [9]
     assert len(sheets.upsert_records) == 1
     assert update.message.editables[0].edits
     assert "Saved successfully!" in update.message.editables[0].edits[0]["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("override_value", ["", "not-a-group"])
+async def test_link_save_sync_falls_back_to_detect_when_override_missing_or_invalid(
+    monkeypatch, override_value
+):
+    sheets = _LinkSheets()
+    link_module = _load_handler_module(monkeypatch, "bot.handlers.link", sheets)
+
+    monkeypatch.setattr(
+        link_module,
+        "parse_link_input",
+        lambda _text: {
+            "url": "https://example.com/icons",
+            "tags": [],
+            "priority": "medium",
+            "category": "Other",
+            "notes": "",
+            "library_group_override": override_value,
+        },
+    )
+    monkeypatch.setattr(link_module, "validate_url", lambda _url: (True, ""))
+    monkeypatch.setattr(link_module, "validate_tags", lambda _tags: (True, ""))
+    monkeypatch.setattr(link_module, "sanitize_html", lambda value: value)
+    monkeypatch.setattr(
+        link_module.scraper,
+        "fetch_metadata",
+        lambda _url: {
+            "title": "Icon docs",
+            "description": "docs",
+            "thumbnail": "thumb.png",
+            "source": "example.com",
+            "success": True,
+            "error": None,
+        },
+    )
+    monkeypatch.setattr(link_module.gemini, "summarize", lambda *_args: "summary")
+
+    detect_calls = []
+
+    def _detect(url: str, title: str, summary: str):
+        detect_calls.append((url, title, summary))
+        return "icons"
+
+    monkeypatch.setattr(link_module, "detect_library_group", _detect)
+
+    update = _DummyUpdate(text="https://example.com/icons")
+    await link_module.handle_link(update, _DummyContext())
+
+    assert detect_calls == [("https://example.com/icons", "Icon docs", "summary")]
+    assert sheets.append_kwargs["library_group"] == "icons"
+    assert sheets.get_row_by_id_calls == [9]
 
 
 @pytest.mark.asyncio
@@ -218,7 +301,10 @@ async def test_edit_library_group_moves_between_mirror_sheets(monkeypatch):
     await manage_module.edit_cmd(update, context)
 
     group_col = SHEET_HEADERS.index("Library Group") + 1
-    assert sheets.update_cell_calls == [(15, group_col, "shadcn")]
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [15]
+    assert sheets.update_cell_calls == []
+    assert sheets.update_cell_by_id_calls == [(15, group_col, "shadcn")]
     assert sheets.remove_calls == [("15", "icons")]
     assert len(sheets.upsert_calls) == 1
     assert sheets.upsert_calls[0]["Library Group"] == "shadcn"
@@ -235,7 +321,10 @@ async def test_delete_callback_removes_mirror_row(monkeypatch):
     await callback_module.handle_callback(update, _DummyContext())
 
     assert update.callback_query.answer_calls == 1
-    assert sheets.deleted_rows == [7]
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [7]
+    assert sheets.deleted_rows == []
+    assert sheets.deleted_row_ids == [7]
     assert sheets.remove_calls == [("7", "icons")]
     assert update.callback_query.edits
     assert "Deleted!" in update.callback_query.edits[0]["text"]
