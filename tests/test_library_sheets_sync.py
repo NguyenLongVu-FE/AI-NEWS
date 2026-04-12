@@ -241,6 +241,18 @@ def test_upsert_library_row_appends_then_updates_existing_row():
     )
 
 
+def test_upsert_library_row_blank_group_routes_to_utils_mirror():
+    service, _, spreadsheet = _make_service()
+
+    service.upsert_library_row({"ID": "77", "Library Group": "   ", "Tieu de": "Utility"})
+
+    assert spreadsheet.add_calls == [("LIB_utils", 1000, len(SHEET_HEADERS))]
+    mirror_sheet = spreadsheet._worksheets["LIB_utils"]
+    assert len(mirror_sheet.data_rows) == 1
+    assert mirror_sheet.data_rows[0][0] == "77"
+    assert mirror_sheet.data_rows[0][SHEET_HEADERS.index("Library Group")] == "utils"
+
+
 def test_remove_library_row_deletes_row_by_id():
     service, _, _ = _make_service()
     service.upsert_library_row({"ID": "1", "Library Group": "icons"})

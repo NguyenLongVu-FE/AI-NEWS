@@ -4,6 +4,7 @@ import gspread
 from gspread.utils import ValueInputOption, rowcol_to_a1
 
 from bot.config import GOOGLE_SHEET_ID, SHEET_HEADERS, get_google_credentials
+from bot.services.library_groups import normalize_library_group
 
 
 _instance = None
@@ -166,17 +167,21 @@ class SheetsService:
         ]
 
     def upsert_library_row(self, record: dict):
-        group = str(record.get("Library Group", "")).strip().lower()
-        if not group:
-            return
+        raw_group = record.get("Library Group")
+        group = (
+            normalize_library_group(str(raw_group) if raw_group is not None else None)
+            or "utils"
+        )
 
         row_id = str(record.get("ID", "")).strip()
         if not row_id:
             return
 
+        normalized_record = dict(record)
+        normalized_record["Library Group"] = group
         ws = self.ensure_library_sheet(group)
         ids = ws.col_values(1)
-        row = [record.get(header, "") for header in SHEET_HEADERS]
+        row = [normalized_record.get(header, "") for header in SHEET_HEADERS]
 
         if row_id in ids:
             row_number = ids.index(row_id) + 1
