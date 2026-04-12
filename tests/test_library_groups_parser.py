@@ -7,6 +7,11 @@ def test_parse_link_extracts_library_group_override():
     assert parsed["library_group_override"] == "shadcn"
 
 
+def test_parse_link_invalid_library_group_override_returns_empty():
+    parsed = parse_link_input("https://example.com/docs ~not-a-real-group")
+    assert parsed["library_group_override"] == ""
+
+
 def test_parse_link_existing_fields_are_preserved():
     parsed = parse_link_input("https://example.com #ui !high @Tech useful note")
 

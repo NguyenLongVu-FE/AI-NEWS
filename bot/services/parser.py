@@ -1,6 +1,7 @@
 import re
 
 from bot.config import CATEGORIES
+from bot.services.library_groups import normalize_library_group
 
 
 def parse_link_input(text: str) -> dict:
@@ -41,7 +42,7 @@ def parse_link_input(text: str) -> dict:
 
         group_match = library_group_pattern.search(line)
         if group_match:
-            library_group_override = group_match.group(1).lower()
+            library_group_override = normalize_library_group(group_match.group(1)) or ""
 
         remaining = line
         remaining = url_pattern.sub("", remaining)
