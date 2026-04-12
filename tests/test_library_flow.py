@@ -96,15 +96,28 @@ class _DummyCallbackUpdate:
 
 
 class _LinkSheets:
-    def __init__(self, upsert_raises: bool = False):
+    def __init__(self, upsert_raises: bool = False, existing_row: int | None = None):
         self.upsert_raises = upsert_raises
+        self.existing_row = existing_row
         self.append_kwargs = None
         self.upsert_records = []
+        self.append_note_calls = []
         self.get_row_calls = []
         self.get_row_by_id_calls = []
+        self.existing_record = (
+            {
+                "ID": "15",
+                "Library Group": "icons",
+                "Tieu de": "Existing docs",
+                "Nguoi luu": "Tester",
+                "Ghi chu tay": "Old note",
+            }
+            if existing_row
+            else None
+        )
 
     def find_by_url(self, _url: str):
-        return None
+        return self.existing_row
 
     def append_link(self, **kwargs):
         self.append_kwargs = dict(kwargs)
@@ -112,15 +125,26 @@ class _LinkSheets:
 
     def get_row(self, row: int):
         self.get_row_calls.append(row)
+        if self.existing_row == row and self.existing_record:
+            return dict(self.existing_record)
         return {"ID": "999", "Library Group": "wrong", "Tieu de": "Wrong row"}
 
-    def get_row_by_id(self, row_id: int):
+    def get_row_by_id(self, row_id: int | str):
         self.get_row_by_id_calls.append(row_id)
+        if self.existing_record and str(row_id) == str(self.existing_record.get("ID", "")):
+            return dict(self.existing_record)
         return {
             "ID": str(row_id),
             "Library Group": self.append_kwargs.get("library_group", ""),
             "Tieu de": "Button docs",
         }
+
+    def append_note(self, row: int, note: str):
+        self.append_note_calls.append((row, note))
+        if self.existing_row == row and self.existing_record is not None:
+            current = self.existing_record.get("Ghi chu tay", "")
+            separator = " | " if current else ""
+            self.existing_record["Ghi chu tay"] = f"{current}{separator}{note}"
 
     def upsert_library_row(self, record: dict):
         self.upsert_records.append(dict(record))
@@ -129,9 +153,11 @@ class _LinkSheets:
 
 
 class _ManageSheets:
-    def __init__(self):
+    def __init__(self, upsert_raises: bool = False):
+        self.upsert_raises = upsert_raises
         self.update_cell_calls = []
         self.update_cell_by_id_calls = []
+        self.append_note_calls = []
         self.remove_calls = []
         self.upsert_calls = []
         self.get_row_calls = []
@@ -143,6 +169,7 @@ class _ManageSheets:
                 "Tieu de": "Lucide",
                 "Uu tien": "medium",
                 "Trang thai": "chua_doc",
+                "Ghi chu tay": "Existing note",
             }
         }
 
@@ -170,15 +197,28 @@ class _ManageSheets:
         record[SHEET_HEADERS[col - 1]] = value
         return True
 
+    def append_note(self, row: int, note: str):
+        self.append_note_calls.append((row, note))
+        record = self.records_by_id.get(row)
+        if record is None:
+            return
+        current = record.get("Ghi chu tay", "")
+        separator = " | " if current else ""
+        record["Ghi chu tay"] = f"{current}{separator}{note}"
+
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
 
     def upsert_library_row(self, record: dict):
         self.upsert_calls.append(dict(record))
+        if self.upsert_raises:
+            raise RuntimeError("mirror sync failed")
 
 
 class _CallbackSheets:
-    def __init__(self):
+    def __init__(self, upsert_raises: bool = False, remove_raises: bool = False):
+        self.upsert_raises = upsert_raises
+        self.remove_raises = remove_raises
         self.deleted_rows = []
         self.deleted_row_ids = []
         self.remove_calls = []
@@ -232,9 +272,13 @@ class _CallbackSheets:
 
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
+        if self.remove_raises:
+            raise RuntimeError("mirror cleanup failed")
 
     def upsert_library_row(self, record: dict):
         self.upsert_calls.append(dict(record))
+        if self.upsert_raises:
+            raise RuntimeError("mirror sync failed")
 
 
 @pytest.mark.asyncio
@@ -290,6 +334,10 @@ async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(
     assert len(sheets.upsert_records) == 1
     assert update.message.editables[0].edits
     assert "Saved successfully!" in update.message.editables[0].edits[0]["text"]
+    assert any(
+        link_module.t("mirror_sync_warning", "en") in reply["text"]
+        for reply in update.message.replies
+    )
     assert "Mirror upsert failed for row_id=9" in caplog.text
 
 
@@ -347,6 +395,75 @@ async def test_link_save_sync_falls_back_to_detect_when_override_missing_or_inva
 
 
 @pytest.mark.asyncio
+async def test_link_existing_url_note_merge_syncs_mirror(monkeypatch):
+    sheets = _LinkSheets(existing_row=2)
+    link_module = _load_handler_module(monkeypatch, "bot.handlers.link", sheets)
+
+    monkeypatch.setattr(
+        link_module,
+        "parse_link_input",
+        lambda _text: {
+            "url": "https://example.com/icons",
+            "tags": [],
+            "priority": "medium",
+            "category": "Other",
+            "notes": "fresh note",
+            "library_group_override": "",
+        },
+    )
+    monkeypatch.setattr(link_module, "validate_url", lambda _url: (True, ""))
+    monkeypatch.setattr(link_module, "validate_tags", lambda _tags: (True, ""))
+
+    update = _DummyUpdate(text="https://example.com/icons fresh note")
+    await link_module.handle_link(update, _DummyContext())
+
+    assert sheets.append_note_calls == [(2, "fresh note")]
+    assert sheets.get_row_calls == [2]
+    assert sheets.get_row_by_id_calls == ["15"]
+    assert len(sheets.upsert_records) == 1
+    assert "fresh note" in sheets.upsert_records[0]["Ghi chu tay"]
+    assert update.message.replies
+    assert link_module.t("notes_merged", "en") in update.message.replies[0]["text"]
+    assert (
+        link_module.t("mirror_sync_warning", "en")
+        not in update.message.replies[0]["text"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_link_existing_url_note_merge_warns_when_mirror_sync_fails(
+    monkeypatch, caplog
+):
+    sheets = _LinkSheets(upsert_raises=True, existing_row=2)
+    link_module = _load_handler_module(monkeypatch, "bot.handlers.link", sheets)
+
+    monkeypatch.setattr(
+        link_module,
+        "parse_link_input",
+        lambda _text: {
+            "url": "https://example.com/icons",
+            "tags": [],
+            "priority": "medium",
+            "category": "Other",
+            "notes": "fresh note",
+            "library_group_override": "",
+        },
+    )
+    monkeypatch.setattr(link_module, "validate_url", lambda _url: (True, ""))
+    monkeypatch.setattr(link_module, "validate_tags", lambda _tags: (True, ""))
+
+    update = _DummyUpdate(text="https://example.com/icons fresh note")
+    with caplog.at_level("WARNING"):
+        await link_module.handle_link(update, _DummyContext())
+
+    assert sheets.append_note_calls == [(2, "fresh note")]
+    assert sheets.get_row_by_id_calls == ["15"]
+    assert len(sheets.upsert_records) == 1
+    assert link_module.t("mirror_sync_warning", "en") in update.message.replies[0]["text"]
+    assert "Mirror upsert failed for row_id=15" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_edit_library_group_moves_between_mirror_sheets(monkeypatch):
     sheets = _ManageSheets()
     manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
@@ -382,6 +499,37 @@ async def test_edit_non_library_field_syncs_mirror_row(monkeypatch):
     assert len(sheets.upsert_calls) == 1
     assert sheets.upsert_calls[0]["Tieu de"] == "New Lucide"
     assert "title: → New Lucide" in update.message.replies[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_note_command_syncs_mirror_after_append(monkeypatch):
+    sheets = _ManageSheets()
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    await manage_module.note_cmd(update, _DummyContext(args=["15", "Need", "examples"]))
+
+    assert sheets.get_row_calls == [15]
+    assert sheets.append_note_calls == [(15, "Need examples")]
+    assert sheets.get_row_by_id_calls == [15]
+    assert len(sheets.upsert_calls) == 1
+    assert "Need examples" in sheets.upsert_calls[0]["Ghi chu tay"]
+    assert manage_module.t("mirror_sync_warning", "en") not in update.message.replies[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_note_command_warns_when_mirror_sync_fails(monkeypatch, caplog):
+    sheets = _ManageSheets(upsert_raises=True)
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    with caplog.at_level("WARNING"):
+        await manage_module.note_cmd(update, _DummyContext(args=["15", "Need", "examples"]))
+
+    assert sheets.append_note_calls == [(15, "Need examples")]
+    assert len(sheets.upsert_calls) == 1
+    assert manage_module.t("mirror_sync_warning", "en") in update.message.replies[0]["text"]
+    assert "Mirror upsert failed for row_id=15" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -432,6 +580,22 @@ async def test_callback_status_and_priority_sync_mirror(
 
 
 @pytest.mark.asyncio
+async def test_callback_update_warns_when_mirror_sync_fails(monkeypatch, caplog):
+    sheets = _CallbackSheets(upsert_raises=True)
+    callback_module = _load_handler_module(monkeypatch, "bot.handlers.callback", sheets)
+    monkeypatch.setattr(callback_module, "_get_lang", lambda _query: "en")
+
+    update = _DummyCallbackUpdate("s:status:7:dang_doc")
+    with caplog.at_level("WARNING"):
+        await callback_module.handle_callback(update, _DummyContext())
+
+    assert update.callback_query.answer_calls == 1
+    assert sheets.update_cell_by_id_calls == [(7, 11, "dang_doc")]
+    assert callback_module.t("mirror_sync_warning", "en") in update.callback_query.edits[-1]["text"]
+    assert "Mirror upsert failed for row_id=7" in caplog.text
+
+
+@pytest.mark.asyncio
 async def test_delete_callback_removes_mirror_row(monkeypatch):
     sheets = _CallbackSheets()
     callback_module = _load_handler_module(monkeypatch, "bot.handlers.callback", sheets)
@@ -448,3 +612,22 @@ async def test_delete_callback_removes_mirror_row(monkeypatch):
     assert sheets.remove_calls == [("7", "icons")]
     assert update.callback_query.edits
     assert "Deleted!" in update.callback_query.edits[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_delete_callback_warns_when_mirror_cleanup_fails(monkeypatch, caplog):
+    sheets = _CallbackSheets(remove_raises=True)
+    callback_module = _load_handler_module(monkeypatch, "bot.handlers.callback", sheets)
+    monkeypatch.setattr(callback_module, "_get_lang", lambda _query: "en")
+
+    update = _DummyCallbackUpdate("c:del:7:y")
+    with caplog.at_level("WARNING"):
+        await callback_module.handle_callback(update, _DummyContext())
+
+    assert update.callback_query.answer_calls == 1
+    assert sheets.deleted_row_ids == [7]
+    assert sheets.remove_calls == [("7", "icons")]
+    assert update.callback_query.edits
+    assert "Deleted!" in update.callback_query.edits[0]["text"]
+    assert callback_module.t("mirror_sync_warning", "en") in update.callback_query.edits[0]["text"]
+    assert "Mirror cleanup failed for deleted row_id=7 in group=icons" in caplog.text

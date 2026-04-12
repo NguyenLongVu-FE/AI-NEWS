@@ -38,18 +38,20 @@ def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
     return True
 
 
-def _sync_library_mirror(sheets, row_id: int):
+def _sync_library_mirror(sheets, row_id: int) -> bool:
     updated_record = _get_record_by_id(sheets, row_id)
     if not updated_record:
         logger.warning(
             "Mirror sync skipped for row_id=%s: record not found after update", row_id
         )
-        return
+        return False
 
     try:
         sheets.upsert_library_row(updated_record)
     except Exception:
         logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
+        return False
+    return True
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -88,7 +90,7 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _handle_priority_set(query, row_id, priority, sheets, lang)
 
 
-async def _handle_view(query, row_id, sheets, lang: str):
+async def _handle_view(query, row_id, sheets, lang: str, mirror_warning: bool = False):
     record = _get_record_by_id(sheets, row_id)
     if not record:
         await query.edit_message_text(
@@ -113,9 +115,10 @@ async def _handle_view(query, row_id, sheets, lang: str):
             ],
         ]
     )
-    await query.edit_message_text(
-        format_view_detail(record, lang=lang), parse_mode="HTML", reply_markup=keyboard
-    )
+    detail_text = format_view_detail(record, lang=lang)
+    if mirror_warning:
+        detail_text = f"{detail_text}\n\n⚠️ {t('mirror_sync_warning', lang)}"
+    await query.edit_message_text(detail_text, parse_mode="HTML", reply_markup=keyboard)
 
 
 async def _handle_delete_confirm(query, row_id, sheets, lang: str):
@@ -150,6 +153,7 @@ async def _handle_delete_execute(query, row_id, confirmed, sheets, lang: str):
                 parse_mode="HTML",
             )
             return
+        mirror_warning = False
         if record:
             record_id = str(record.get("ID", "")).strip() or str(row_id)
             record_group = normalize_library_group(record.get("Library Group")) or "utils"
@@ -162,7 +166,11 @@ async def _handle_delete_execute(query, row_id, confirmed, sheets, lang: str):
                     record_group,
                     exc_info=True,
                 )
-        await query.edit_message_text(f"✅ <b>{t('deleted', lang)}</b>", parse_mode="HTML")
+                mirror_warning = True
+        warning_suffix = f"\n\n⚠️ {t('mirror_sync_warning', lang)}" if mirror_warning else ""
+        await query.edit_message_text(
+            f"✅ <b>{t('deleted', lang)}</b>{warning_suffix}", parse_mode="HTML"
+        )
     else:
         await _handle_view(query, row_id, sheets, lang)
 
@@ -211,8 +219,8 @@ async def _handle_status_set(query, row_id, status, sheets, lang: str):
             parse_mode="HTML",
         )
         return
-    _sync_library_mirror(sheets, row_id)
-    await _handle_view(query, row_id, sheets, lang)
+    mirror_synced = _sync_library_mirror(sheets, row_id)
+    await _handle_view(query, row_id, sheets, lang, mirror_warning=not mirror_synced)
 
 
 async def _handle_priority_menu(query, row_id, lang: str):
@@ -253,8 +261,8 @@ async def _handle_priority_set(query, row_id, priority, sheets, lang: str):
             parse_mode="HTML",
         )
         return
-    _sync_library_mirror(sheets, row_id)
-    await _handle_view(query, row_id, sheets, lang)
+    mirror_synced = _sync_library_mirror(sheets, row_id)
+    await _handle_view(query, row_id, sheets, lang, mirror_warning=not mirror_synced)
 
 
 callback_handler = CallbackQueryHandler(handle_callback)

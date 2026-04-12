@@ -44,13 +44,17 @@ def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
     return True
 
 
-def _sync_library_mirror(sheets, row_id: int, previous_record: dict | None = None):
+def _sync_library_mirror(
+    sheets, row_id: int, previous_record: dict | None = None
+) -> bool:
     updated_record = _get_record_by_id(sheets, row_id)
     if not updated_record:
         logger.warning(
             "Mirror sync skipped for row_id=%s: record not found after update", row_id
         )
-        return
+        return False
+
+    mirror_synced = True
 
     if previous_record is not None:
         old_group = normalize_library_group(previous_record.get("Library Group")) or "utils"
@@ -66,11 +70,19 @@ def _sync_library_mirror(sheets, row_id: int, previous_record: dict | None = Non
                     old_group,
                     exc_info=True,
                 )
+                mirror_synced = False
 
     try:
         sheets.upsert_library_row(updated_record)
     except Exception:
         logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
+        return False
+
+    return mirror_synced
+
+
+def _mirror_warning_suffix(lang: str) -> str:
+    return f"\n\n⚠️ {t('mirror_sync_warning', lang)}"
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -114,10 +126,11 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
-    _sync_library_mirror(sheets, row_id)
+    mirror_synced = _sync_library_mirror(sheets, row_id)
+    mirror_warning = _mirror_warning_suffix(lang) if not mirror_synced else ""
     await update.message.reply_text(
         f"✅ <b>{t('status_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
-        f"📌 {t('status_label', lang)}: {old_status} → {status}",
+        f"📌 {t('status_label', lang)}: {old_status} → {status}{mirror_warning}",
         parse_mode="HTML",
     )
 
@@ -157,9 +170,11 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     sheets.append_note(row_id, note_text)
+    mirror_synced = _sync_library_mirror(sheets, row_id)
+    mirror_warning = _mirror_warning_suffix(lang) if not mirror_synced else ""
     await update.message.reply_text(
         f"✅ <b>{t('note_added', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
-        f"📝 {note_text}",
+        f"📝 {note_text}{mirror_warning}",
         parse_mode="HTML",
     )
 
@@ -203,10 +218,11 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
-    _sync_library_mirror(sheets, row_id)
+    mirror_synced = _sync_library_mirror(sheets, row_id)
+    mirror_warning = _mirror_warning_suffix(lang) if not mirror_synced else ""
     await update.message.reply_text(
         f"✅ <b>{t('priority_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
-        f"🔴 {t('priority_label', lang)}: {record.get('Uu tien', '')} → {priority}",
+        f"🔴 {t('priority_label', lang)}: {record.get('Uu tien', '')} → {priority}{mirror_warning}",
         parse_mode="HTML",
     )
 
@@ -316,15 +332,16 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    _sync_library_mirror(
+    mirror_synced = _sync_library_mirror(
         sheets,
         row_id,
         previous_record=record if field == "library_group" else None,
     )
+    mirror_warning = _mirror_warning_suffix(lang) if not mirror_synced else ""
 
     await update.message.reply_text(
         f"✅ <b>{t('edit_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
-        f"✏️ {field}: → {value_to_save}",
+        f"✏️ {field}: → {value_to_save}{mirror_warning}",
         parse_mode="HTML",
     )
 

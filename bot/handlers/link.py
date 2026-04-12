@@ -37,6 +37,20 @@ def _get_row_by_logical_id(sheets, row_id: int):
     return sheets.get_row(row_id)
 
 
+def _upsert_library_mirror(sheets, row_id: int | str, record: dict | None) -> bool:
+    if not record:
+        logger.warning(
+            "Mirror sync skipped for row_id=%s: record not found after update", row_id
+        )
+        return False
+    try:
+        sheets.upsert_library_row(record)
+    except Exception:
+        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
+        return False
+    return True
+
+
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     if not URL_REGEX.search(text):
@@ -74,15 +88,23 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     existing_row = sheets.find_by_url(url)
     if existing_row:
-        record = sheets.get_row(existing_row)
+        record = sheets.get_row(existing_row) or {}
+        mirror_warning = ""
         if parsed["notes"]:
             sheets.append_note(existing_row, parsed["notes"])
+            record_id = str(record.get("ID", "")).strip()
+            mirror_row_id = record_id or existing_row
+            updated_record = _get_row_by_logical_id(sheets, mirror_row_id)
+            if updated_record is None:
+                updated_record = sheets.get_row(existing_row)
+            if not _upsert_library_mirror(sheets, mirror_row_id, updated_record):
+                mirror_warning = f"\n⚠️ {t('mirror_sync_warning', lang)}"
         note_msg = f"📝 <b>{t('notes_merged', lang)}</b>" if parsed["notes"] else ""
         await update.message.reply_text(
             f"🔁 <b>{t('link_exists', lang)}</b>\n\n"
             f"📄 <b>{t('link_title', lang)}</b> {record.get('Tieu de', 'N/A')}\n"
             f"👤 <b>{t('link_saved_by', lang)}</b> {record.get('Nguoi luu', 'N/A')}\n"
-            f"{note_msg}",
+            f"{note_msg}{mirror_warning}",
             parse_mode="HTML",
         )
         return
@@ -153,12 +175,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success_text, parse_mode="HTML", reply_markup=keyboard
         )
 
-    try:
-        saved_record = _get_row_by_logical_id(sheets, row_id)
-        if saved_record:
-            sheets.upsert_library_row(saved_record)
-    except Exception:
-        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
+    saved_record = _get_row_by_logical_id(sheets, row_id)
+    if not _upsert_library_mirror(sheets, row_id, saved_record):
+        try:
+            await update.message.reply_text(
+                f"⚠️ {t('mirror_sync_warning', lang)}", parse_mode="HTML"
+            )
+        except Exception:
+            pass
 
     if not metadata["success"]:
         try:
