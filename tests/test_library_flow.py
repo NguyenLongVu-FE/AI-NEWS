@@ -574,6 +574,24 @@ async def test_status_and_priority_commands_sync_mirror(
 
 
 @pytest.mark.asyncio
+async def test_delete_command_confirmation_uses_logical_id_lookup(monkeypatch):
+    sheets = _ManageSheets()
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    await manage_module.delete_cmd(update, _DummyContext(args=["15"]))
+
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [15]
+    assert update.message.replies
+    reply = update.message.replies[0]
+    assert "Lucide" in reply["text"]
+    keyboard = reply["kwargs"]["reply_markup"]
+    assert keyboard.inline_keyboard[0][0].callback_data == "c:del:15:y"
+    assert keyboard.inline_keyboard[0][1].callback_data == "v:15"
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("callback_data", "column", "field_name", "expected_value"),
     [

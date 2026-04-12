@@ -255,7 +255,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
@@ -374,7 +374,7 @@ async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
