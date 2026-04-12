@@ -16,7 +16,7 @@ def parse_link_input(text: str) -> dict:
     tag_pattern = re.compile(r"#(\w+)")
     priority_pattern = re.compile(r"!(high|medium|low)", re.IGNORECASE)
     category_pattern = re.compile(r"@(\w+)")
-    library_group_pattern = re.compile(r"~([a-zA-Z0-9-]+)")
+    library_group_pattern = re.compile(r"(?<!\S)~([a-zA-Z0-9-]+)(?!\S)")
 
     for line in lines:
         line = line.strip()

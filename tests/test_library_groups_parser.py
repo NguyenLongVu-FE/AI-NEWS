@@ -17,9 +17,19 @@ def test_parse_link_existing_fields_are_preserved():
     assert parsed["notes"] == "useful note"
 
 
+def test_parse_link_ignores_tilde_group_inside_url_path():
+    parsed = parse_link_input("https://example.com/docs/~shadcn/button")
+    assert parsed["library_group_override"] == ""
+
+
 def test_detect_library_group_from_motion_domain():
     group = detect_library_group("https://motion.dev/docs", "Motion docs", "")
     assert group == "animation"
+
+
+def test_detect_library_group_ignores_domain_rules_in_title_text():
+    group = detect_library_group("https://example.com/docs", "Compare with motion.dev docs", "")
+    assert group == "utils"
 
 
 def test_normalize_library_group_unknown_returns_none():
