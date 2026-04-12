@@ -3,6 +3,7 @@ import logging
 import sys
 import types
 
+import pytest
 from fastapi.testclient import TestClient
 
 
@@ -85,8 +86,20 @@ def _load_index_module(monkeypatch):
     return importlib.import_module("api.index")
 
 
-def test_startup_hook_invokes_library_group_backfill(monkeypatch):
-    index_module = _load_index_module(monkeypatch)
+@pytest.fixture
+def fresh_index_module(monkeypatch):
+    previous_module = sys.modules.get("api.index")
+    module = _load_index_module(monkeypatch)
+    try:
+        yield module
+    finally:
+        sys.modules.pop("api.index", None)
+        if previous_module is not None:
+            sys.modules["api.index"] = previous_module
+
+
+def test_startup_hook_invokes_library_group_backfill(monkeypatch, fresh_index_module):
+    index_module = fresh_index_module
     backfill_calls = []
 
     def _detect_group(_url: str, _title: str = "", _summary: str = ""):
@@ -105,8 +118,8 @@ def test_startup_hook_invokes_library_group_backfill(monkeypatch):
     assert backfill_calls == [_detect_group]
 
 
-def test_startup_backfill_failure_is_non_blocking(monkeypatch, caplog):
-    index_module = _load_index_module(monkeypatch)
+def test_startup_backfill_failure_is_non_blocking(monkeypatch, caplog, fresh_index_module):
+    index_module = fresh_index_module
 
     class _FailingSheetsStub:
         def backfill_library_groups(self, _detect_group_fn):
