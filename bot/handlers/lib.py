@@ -155,12 +155,14 @@ async def _ensure_group_sheet(update: Update, lang: str, args: list[str]):
         and mirror_id not in source_ids
     )
 
-    mirror_sheet.clear()
+    source_rows = [_record_to_sheet_row(record) for record in source_records]
     mirror_sheet.update(
         range_name="A1",
-        values=[SHEET_HEADERS, *[_record_to_sheet_row(record) for record in source_records]],
+        values=[SHEET_HEADERS, *source_rows],
         value_input_option="RAW",
     )
+    if len(mirror_records) > len(source_rows):
+        mirror_sheet.delete_rows(len(source_rows) + 2, len(mirror_records) + 1)
 
     sheet_name = escape(getattr(mirror_sheet, "title", f"LIB_{group}"))
     text = (

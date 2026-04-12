@@ -33,20 +33,25 @@ class _FakeSettingsService:
 
 
 class _FakeMirrorSheet:
-    def __init__(self, title: str, records=None):
+    def __init__(self, title: str, records=None, raise_on_update: bool = False):
         self.title = title
         self._records = list(records or [])
+        self.raise_on_update = raise_on_update
         self.clear_calls = 0
         self.update_calls = []
+        self.delete_rows_calls = []
+        self.operation_log = []
 
     def get_all_records(self):
         return list(self._records)
 
     def clear(self):
         self.clear_calls += 1
+        self.operation_log.append("clear")
         self._records = []
 
     def update(self, *, range_name: str, values: list[list], value_input_option: str):
+        self.operation_log.append("update")
         self.update_calls.append(
             {
                 "range_name": range_name,
@@ -54,6 +59,8 @@ class _FakeMirrorSheet:
                 "value_input_option": value_input_option,
             }
         )
+        if self.raise_on_update:
+            raise RuntimeError("mirror update failed")
         if not values:
             self._records = []
             return
@@ -64,11 +71,31 @@ class _FakeMirrorSheet:
             padded = list(row) + [""] * (len(headers) - len(row))
             self._records.append(dict(zip(headers, padded)))
 
+    def delete_rows(self, start_index: int, end_index: int | None = None):
+        if end_index is None:
+            end_index = start_index
+        self.operation_log.append("delete_rows")
+        self.delete_rows_calls.append(
+            {"start_index": start_index, "end_index": end_index}
+        )
+        start = max(start_index - 2, 0)
+        end = max(end_index - 1, 0)
+        del self._records[start:end]
+
 
 class _FakeSheetsService:
-    def __init__(self, records, mirror_records=None):
+    def __init__(
+        self,
+        records,
+        mirror_records=None,
+        mirror_raise_on_update: bool = False,
+    ):
         self.records = list(records)
-        self.mirror = _FakeMirrorSheet("LIB_utils", records=mirror_records or [])
+        self.mirror = _FakeMirrorSheet(
+            "LIB_utils",
+            records=mirror_records or [],
+            raise_on_update=mirror_raise_on_update,
+        )
         self.ensure_calls = []
         self.upsert_calls = []
         self.remove_calls = []
@@ -205,8 +232,10 @@ async def test_lib_sheet_utils_backfills_blank_group_rows(monkeypatch):
 
     text = update.message.replies[0]["text"]
     assert sheets.ensure_calls == ["utils"]
-    assert sheets.mirror.clear_calls == 1
+    assert sheets.mirror.clear_calls == 0
     assert len(sheets.mirror.update_calls) == 1
+    assert sheets.mirror.delete_rows_calls == []
+    assert sheets.mirror.operation_log == ["update"]
     values = sheets.mirror.update_calls[0]["values"]
     assert [row[0] for row in values[1:]] == ["1", "2"]
     group_col = lib_module.SHEET_HEADERS.index("Library Group")
@@ -223,7 +252,7 @@ async def test_lib_sheet_ensures_mirror_backfills_and_reports_cleanup(monkeypatc
             {"ID": "2", "Library Group": "shadcn", "Tieu de": "Card"},
             {"ID": "3", "Library Group": "icons", "Tieu de": "Lucide"},
         ],
-        mirror_records=[{"ID": "1"}, {"ID": "99"}],
+        mirror_records=[{"ID": "1"}, {"ID": "99"}, {"ID": "100"}],
     )
     _setup_sheets(monkeypatch, sheets)
     update = _DummyUpdate()
@@ -232,12 +261,37 @@ async def test_lib_sheet_ensures_mirror_backfills_and_reports_cleanup(monkeypatc
 
     text = update.message.replies[0]["text"]
     assert sheets.ensure_calls == ["shadcn"]
-    assert sheets.mirror.clear_calls == 1
+    assert sheets.mirror.clear_calls == 0
     assert len(sheets.mirror.update_calls) == 1
+    assert sheets.mirror.delete_rows_calls == [{"start_index": 4, "end_index": 4}]
+    assert sheets.mirror.operation_log == ["update", "delete_rows"]
     values = sheets.mirror.update_calls[0]["values"]
     assert [row[0] for row in values[1:]] == ["1", "2"]
     assert "Synced sheet LIB_shadcn" in text
-    assert "Backfill: 2 | Cleanup: 1" in text
+    assert "Backfill: 2 | Cleanup: 2" in text
+
+
+@pytest.mark.asyncio
+async def test_lib_sheet_update_failure_keeps_existing_mirror_rows(monkeypatch):
+    _setup_lang(monkeypatch, "en")
+    existing_records = [{"ID": "1", "Library Group": "shadcn", "Tieu de": "Existing"}]
+    sheets = _FakeSheetsService(
+        [
+            {"ID": "1", "Library Group": "shadcn", "Tieu de": "Button"},
+            {"ID": "2", "Library Group": "shadcn", "Tieu de": "Card"},
+        ],
+        mirror_records=[dict(record) for record in existing_records],
+        mirror_raise_on_update=True,
+    )
+    _setup_sheets(monkeypatch, sheets)
+    update = _DummyUpdate()
+
+    with pytest.raises(RuntimeError, match="mirror update failed"):
+        await lib_module.lib_cmd(update, _DummyContext(args=["sheet", "shadcn"]))
+
+    assert sheets.mirror.clear_calls == 0
+    assert sheets.mirror.operation_log == ["update"]
+    assert sheets.mirror.get_all_records() == existing_records
 
 
 @pytest.mark.asyncio
