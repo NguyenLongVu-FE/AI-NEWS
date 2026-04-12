@@ -12,6 +12,9 @@ GOOGLE_CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON", "")
 GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID", "")
 ADMIN_TELEGRAM_ID = os.environ.get("ADMIN_TELEGRAM_ID", "")
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
+ENABLE_STARTUP_BACKFILL = (
+    os.environ.get("ENABLE_STARTUP_BACKFILL", "false").strip().lower() == "true"
+)
 
 
 def get_google_credentials():

@@ -12,7 +12,12 @@ from starlette.concurrency import run_in_threadpool
 from telegram import Update
 from telegram.ext import Application
 
-from bot.config import TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, ADMIN_TELEGRAM_ID
+from bot.config import (
+    TELEGRAM_BOT_TOKEN,
+    TELEGRAM_WEBHOOK_SECRET,
+    ADMIN_TELEGRAM_ID,
+    ENABLE_STARTUP_BACKFILL,
+)
 from bot.services.library_groups import detect_library_group
 from bot.services.sheets import get_sheets_service
 
@@ -93,7 +98,8 @@ async def startup_backfill_library_groups():
         logger.warning("Startup library group backfill failed", exc_info=True)
 
 
-app.add_event_handler("startup", startup_backfill_library_groups)
+if ENABLE_STARTUP_BACKFILL:
+    app.add_event_handler("startup", startup_backfill_library_groups)
 
 
 async def _send_admin_alert(error_msg: str):

@@ -46,10 +46,12 @@ def _install_handler_stubs(monkeypatch):
 def _load_index_module(monkeypatch):
     monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "dummy-token")
     monkeypatch.setenv("TELEGRAM_WEBHOOK_SECRET", "expected-secret")
+    monkeypatch.setenv("ENABLE_STARTUP_BACKFILL", "true")
     import bot.config as bot_config
 
     monkeypatch.setattr(bot_config, "TELEGRAM_BOT_TOKEN", "dummy-token")
     monkeypatch.setattr(bot_config, "TELEGRAM_WEBHOOK_SECRET", "expected-secret")
+    monkeypatch.setattr(bot_config, "ENABLE_STARTUP_BACKFILL", True)
 
     import telegram.ext as tg_ext
 
