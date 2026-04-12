@@ -8,6 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx
 from fastapi import FastAPI, Request
+from starlette.concurrency import run_in_threadpool
 from telegram import Update
 from telegram.ext import Application
 
@@ -87,7 +88,7 @@ def _backfill_missing_library_groups():
 
 async def startup_backfill_library_groups():
     try:
-        _backfill_missing_library_groups()
+        await run_in_threadpool(_backfill_missing_library_groups)
     except Exception:
         logger.warning("Startup library group backfill failed", exc_info=True)
 

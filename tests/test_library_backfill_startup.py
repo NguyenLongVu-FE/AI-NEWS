@@ -6,7 +6,7 @@ import types
 from fastapi.testclient import TestClient
 
 
-def _install_handler_stubs():
+def _install_handler_stubs(monkeypatch):
     module_exports = {
         "bot.handlers.start": ["start_handler", "help_handler"],
         "bot.handlers.link": ["link_handler"],
@@ -39,7 +39,7 @@ def _install_handler_stubs():
         module = types.ModuleType(module_name)
         for export in exports:
             setattr(module, export, object())
-        sys.modules[module_name] = module
+        monkeypatch.setitem(sys.modules, module_name, module)
 
 
 def _load_index_module(monkeypatch):
@@ -79,9 +79,9 @@ def _load_index_module(monkeypatch):
             return _DummyBuilder()
 
     monkeypatch.setattr(tg_ext, "Application", _DummyApplication)
-    _install_handler_stubs()
+    _install_handler_stubs(monkeypatch)
 
-    sys.modules.pop("api.index", None)
+    monkeypatch.delitem(sys.modules, "api.index", raising=False)
     return importlib.import_module("api.index")
 
 
