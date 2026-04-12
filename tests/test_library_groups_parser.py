@@ -12,6 +12,16 @@ def test_parse_link_invalid_library_group_override_returns_empty():
     assert parsed["library_group_override"] == ""
 
 
+def test_parse_link_override_preserves_valid_group_after_invalid_same_line():
+    parsed = parse_link_input("https://example.com ~not-real ~shadcn")
+    assert parsed["library_group_override"] == "shadcn"
+
+
+def test_parse_link_override_preserves_valid_group_across_lines():
+    parsed = parse_link_input("https://example.com ~shadcn\n~not-real")
+    assert parsed["library_group_override"] == "shadcn"
+
+
 def test_parse_link_existing_fields_are_preserved():
     parsed = parse_link_input("https://example.com #ui !high @Tech useful note")
 

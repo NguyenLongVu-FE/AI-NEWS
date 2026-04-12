@@ -40,9 +40,10 @@ def parse_link_input(text: str) -> dict:
             cat = category_match.group(1)
             category = _match_category(cat)
 
-        group_match = library_group_pattern.search(line)
-        if group_match:
-            library_group_override = normalize_library_group(group_match.group(1)) or ""
+        for group_match in library_group_pattern.finditer(line):
+            normalized_group = normalize_library_group(group_match.group(1))
+            if normalized_group:
+                library_group_override = normalized_group
 
         remaining = line
         remaining = url_pattern.sub("", remaining)
