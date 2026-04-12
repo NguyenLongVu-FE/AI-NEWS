@@ -233,6 +233,13 @@ class SheetsService:
         separator = " | " if current else ""
         ws.update_cell(row, 7, f"{current}{separator}{note}")
 
+    def append_note_by_id(self, row_id: int | str, note: str) -> bool:
+        row_number = self.resolve_row_index_by_id(row_id)
+        if row_number is None:
+            return False
+        self.append_note(row_number, note)
+        return True
+
     def get_all_records(self):
         ws = self._get_worksheet()
         return ws.get_all_records()

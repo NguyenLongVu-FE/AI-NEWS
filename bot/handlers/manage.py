@@ -44,6 +44,14 @@ def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
     return True
 
 
+def _append_note_by_id(sheets, row_id: int, note: str) -> bool:
+    append_note_by_id = getattr(sheets, "append_note_by_id", None)
+    if callable(append_note_by_id):
+        return append_note_by_id(row_id, note)
+    sheets.append_note(row_id, note)
+    return True
+
+
 def _sync_library_mirror(
     sheets, row_id: int, previous_record: dict | None = None
 ) -> bool:
@@ -163,13 +171,17 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
-    sheets.append_note(row_id, note_text)
+    if not _append_note_by_id(sheets, row_id, note_text):
+        await update.message.reply_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
+        )
+        return
     mirror_synced = _sync_library_mirror(sheets, row_id)
     mirror_warning = _mirror_warning_suffix(lang) if not mirror_synced else ""
     await update.message.reply_text(

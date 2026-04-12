@@ -158,10 +158,12 @@ class _ManageSheets:
         self.update_cell_calls = []
         self.update_cell_by_id_calls = []
         self.append_note_calls = []
+        self.append_note_by_id_calls = []
         self.remove_calls = []
         self.upsert_calls = []
         self.get_row_calls = []
         self.get_row_by_id_calls = []
+        self.row_index_by_id = {15: 2}
         self.records_by_id = {
             15: {
                 "ID": "15",
@@ -172,10 +174,14 @@ class _ManageSheets:
                 "Ghi chu tay": "Existing note",
             }
         }
+        self.records_by_row = {
+            row_index: self.records_by_id[row_id]
+            for row_id, row_index in self.row_index_by_id.items()
+        }
 
     def get_row(self, row: int):
         self.get_row_calls.append(row)
-        record = self.records_by_id.get(row)
+        record = self.records_by_row.get(row)
         return dict(record) if record else None
 
     def get_row_by_id(self, row_id: int):
@@ -185,7 +191,7 @@ class _ManageSheets:
 
     def update_cell(self, row: int, col: int, value: str):
         self.update_cell_calls.append((row, col, value))
-        record = self.records_by_id.get(row)
+        record = self.records_by_row.get(row)
         if record:
             record[SHEET_HEADERS[col - 1]] = value
 
@@ -199,12 +205,20 @@ class _ManageSheets:
 
     def append_note(self, row: int, note: str):
         self.append_note_calls.append((row, note))
-        record = self.records_by_id.get(row)
+        record = self.records_by_row.get(row)
         if record is None:
             return
         current = record.get("Ghi chu tay", "")
         separator = " | " if current else ""
         record["Ghi chu tay"] = f"{current}{separator}{note}"
+
+    def append_note_by_id(self, row_id: int, note: str):
+        self.append_note_by_id_calls.append((row_id, note))
+        row_index = self.row_index_by_id.get(row_id)
+        if row_index is None:
+            return False
+        self.append_note(row_index, note)
+        return True
 
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
@@ -509,9 +523,10 @@ async def test_note_command_syncs_mirror_after_append(monkeypatch):
     update = _DummyUpdate()
     await manage_module.note_cmd(update, _DummyContext(args=["15", "Need", "examples"]))
 
-    assert sheets.get_row_calls == [15]
-    assert sheets.append_note_calls == [(15, "Need examples")]
-    assert sheets.get_row_by_id_calls == [15]
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [15, 15]
+    assert sheets.append_note_by_id_calls == [(15, "Need examples")]
+    assert sheets.append_note_calls == [(2, "Need examples")]
     assert len(sheets.upsert_calls) == 1
     assert "Need examples" in sheets.upsert_calls[0]["Ghi chu tay"]
     assert manage_module.t("mirror_sync_warning", "en") not in update.message.replies[0]["text"]
@@ -526,7 +541,10 @@ async def test_note_command_warns_when_mirror_sync_fails(monkeypatch, caplog):
     with caplog.at_level("WARNING"):
         await manage_module.note_cmd(update, _DummyContext(args=["15", "Need", "examples"]))
 
-    assert sheets.append_note_calls == [(15, "Need examples")]
+    assert sheets.get_row_calls == []
+    assert sheets.get_row_by_id_calls == [15, 15]
+    assert sheets.append_note_by_id_calls == [(15, "Need examples")]
+    assert sheets.append_note_calls == [(2, "Need examples")]
     assert len(sheets.upsert_calls) == 1
     assert manage_module.t("mirror_sync_warning", "en") in update.message.replies[0]["text"]
     assert "Mirror upsert failed for row_id=15" in caplog.text
