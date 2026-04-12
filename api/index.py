@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import time
@@ -11,8 +12,11 @@ from telegram import Update
 from telegram.ext import Application
 
 from bot.config import TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, ADMIN_TELEGRAM_ID
+from bot.services.library_groups import detect_library_group
+from bot.services.sheets import get_sheets_service
 
 app = FastAPI()
+logger = logging.getLogger(__name__)
 
 application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
 
@@ -74,6 +78,21 @@ _initialized = False
 _error_timestamps = deque(maxlen=100)
 ERROR_ALERT_THRESHOLD = 5
 ERROR_ALERT_WINDOW = 600
+
+
+def _backfill_missing_library_groups():
+    sheets = get_sheets_service()
+    sheets.backfill_library_groups(detect_library_group)
+
+
+async def startup_backfill_library_groups():
+    try:
+        _backfill_missing_library_groups()
+    except Exception:
+        logger.warning("Startup library group backfill failed", exc_info=True)
+
+
+app.add_event_handler("startup", startup_backfill_library_groups)
 
 
 async def _send_admin_alert(error_msg: str):
