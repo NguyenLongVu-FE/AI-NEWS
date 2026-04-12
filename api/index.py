@@ -41,6 +41,7 @@ from bot.handlers.lang import lang_handler
 from bot.handlers.export import export_handler
 from bot.handlers.stats import stats_handler
 from bot.handlers.remind import remind_handler
+from bot.handlers.lib import lib_handler
 from api.cron import router as cron_router
 
 application.add_handler(start_handler)
@@ -65,6 +66,7 @@ application.add_handler(lang_handler)
 application.add_handler(export_handler)
 application.add_handler(stats_handler)
 application.add_handler(remind_handler)
+application.add_handler(lib_handler)
 
 app.include_router(cron_router)
 
