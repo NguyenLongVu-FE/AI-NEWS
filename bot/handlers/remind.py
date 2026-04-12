@@ -15,10 +15,10 @@ async def remind_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         current = settings_service.get_user_settings(user_id)["remind_enabled"]
         status = "ON ✅" if current == "true" else "OFF ❌"
         await update.message.reply_text(
-            f"⏰ <b>Reminder / Nhắc nhở</b>\n\n"
-            f"Status: {status}\n\n"
-            f"/remind on — Bật daily digest\n"
-            f"/remind off — Tắt daily digest",
+            f"⏰ <b>{t('remind_menu_title', lang)}</b>\n\n"
+            f"{t('remind_status', lang)}: {status}\n\n"
+            f"/remind on — {t('remind_cmd_on', lang)}\n"
+            f"/remind off — {t('remind_cmd_off', lang)}",
             parse_mode="HTML",
         )
         return

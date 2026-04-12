@@ -21,6 +21,10 @@ def _get_lang(update: Update) -> str:
     return settings_service.get_user_settings(user_id)["language"]
 
 
+def _example(lang: str, command: str) -> str:
+    return f"{t('example_prefix', lang)}: {command}"
+
+
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     lang = _get_lang(update)
@@ -28,7 +32,7 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /status <i>ID</i> <i>{t('status_label', lang)}</i>\n"
             f"{t('status_label', lang)}: {', '.join(STATUS_VALUES)}\n"
-            f"Vi du: /status 42 dang_doc",
+            f"{_example(lang, '/status 42 dang_doc')}",
             parse_mode="HTML",
         )
         return
@@ -36,15 +40,16 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     status = context.args[1].lower()
     if status not in STATUS_VALUES:
         await update.message.reply_text(
             format_error(
-                f"Trang thai khong hop le. Dung: {', '.join(STATUS_VALUES)}",
-                f"Vi du: /status {row_id} dang_doc",
+                t("status_invalid", lang, values=", ".join(STATUS_VALUES)),
+                _example(lang, f"/status {row_id} dang_doc"),
+                lang=lang,
             ),
             parse_mode="HTML",
         )
@@ -52,7 +57,7 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     old_status = record.get("Trang thai", "")
@@ -70,7 +75,7 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args or []) < 2:
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /note <i>ID</i> <i>content</i>\n"
-            "Vi du: /note 42 Hay de tham khao",
+            f"{_example(lang, '/note 42 Add context')}",
             parse_mode="HTML",
         )
         return
@@ -78,15 +83,16 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     note_text = " ".join(context.args[1:])
     if len(note_text) > 500:
         await update.message.reply_text(
             format_error(
-                f"Ghi chu qua dai ({len(note_text)}/500 ky tu)",
-                "Rut gon ghi chu",
+                t("note_too_long", lang, current=len(note_text), max=500),
+                t("note_shorten_hint", lang),
+                lang=lang,
             ),
             parse_mode="HTML",
         )
@@ -94,7 +100,7 @@ async def note_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     sheets.append_note(row_id, note_text)
@@ -111,7 +117,7 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args or []) < 2:
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /priority <i>ID</i> <i>{'/'.join(PRIORITY_VALUES)}</i>\n"
-            f"Vi du: /priority 42 high",
+            f"{_example(lang, '/priority 42 high')}",
             parse_mode="HTML",
         )
         return
@@ -119,15 +125,16 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     priority = context.args[1].lower()
     if priority not in PRIORITY_VALUES:
         await update.message.reply_text(
             format_error(
-                f"Uu tien khong hop le. Dung: {', '.join(PRIORITY_VALUES)}",
-                f"Vi du: /priority {row_id} high",
+                t("priority_invalid", lang, values=", ".join(PRIORITY_VALUES)),
+                _example(lang, f"/priority {row_id} high"),
+                lang=lang,
             ),
             parse_mode="HTML",
         )
@@ -135,7 +142,7 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     sheets.update_cell(row_id, 10, priority)
@@ -151,7 +158,7 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = _get_lang(update)
     if not context.args:
         await update.message.reply_text(
-            f"❌ <b>{t('search_syntax', lang)}</b> /delete <i>ID</i>\nVi du: /delete 42",
+            f"❌ <b>{t('search_syntax', lang)}</b> /delete <i>ID</i>\n{_example(lang, '/delete 42')}",
             parse_mode="HTML",
         )
         return
@@ -159,23 +166,23 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     keyboard = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "✅ Yes, Delete", callback_data=f"c:del:{row_id}:y"
+                    t("delete_yes", lang), callback_data=f"c:del:{row_id}:y"
                 ),
                 InlineKeyboardButton(
-                    "❌ Cancel", callback_data=f"v:{row_id}"
+                    t("cancel", lang), callback_data=f"v:{row_id}"
                 ),
             ],
         ]
@@ -194,8 +201,8 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(context.args or []) < 3:
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /edit <i>ID</i> <i>field</i> <i>value</i>\n"
-            "Fields: title, notes, category, tags\n"
-            "Vi du: /edit 42 title Tieu de moi",
+            f"{t('fields_label', lang)}: title, notes, category, tags\n"
+            f"{_example(lang, '/edit 42 title New title')}",
             parse_mode="HTML",
         )
         return
@@ -203,7 +210,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     field = context.args[1].lower()
@@ -212,7 +219,8 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if field not in col_map:
         await update.message.reply_text(
             format_error(
-                f"Field khong hop le. Dung: {', '.join(col_map.keys())}"
+                t("field_invalid", lang, values=", ".join(col_map.keys())),
+                lang=lang,
             ),
             parse_mode="HTML",
         )
@@ -220,7 +228,7 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     sheets.update_cell(row_id, col_map[field], value)
@@ -236,7 +244,7 @@ async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = _get_lang(update)
     if not context.args:
         await update.message.reply_text(
-            f"❌ <b>{t('search_syntax', lang)}</b> /view <i>ID</i>\nVi du: /view 42",
+            f"❌ <b>{t('search_syntax', lang)}</b> /view <i>ID</i>\n{_example(lang, '/view 42')}",
             parse_mode="HTML",
         )
         return
@@ -244,46 +252,47 @@ async def view_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         row_id = int(context.args[0])
     except ValueError:
         await update.message.reply_text(
-            format_error(t("id_must_be_number", lang)), parse_mode="HTML"
+            format_error(t("id_must_be_number", lang), lang=lang), parse_mode="HTML"
         )
         return
     record = sheets.get_row(row_id)
     if not record:
         await update.message.reply_text(
-            format_error(f"{t('not_found', lang)} {row_id}"), parse_mode="HTML"
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     keyboard = InlineKeyboardMarkup(
         [
             [
                 InlineKeyboardButton(
-                    "✏️ Edit", callback_data=f"a:edit:{row_id}"
+                    t("edit_button", lang), callback_data=f"a:edit:{row_id}"
                 ),
                 InlineKeyboardButton(
-                    "📌 Status", callback_data=f"a:status:{row_id}"
+                    t("status_button", lang), callback_data=f"a:status:{row_id}"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "🔴 Priority", callback_data=f"a:priority:{row_id}"
+                    t("priority_button", lang), callback_data=f"a:priority:{row_id}"
                 ),
                 InlineKeyboardButton(
-                    "🗑️ Delete", callback_data=f"a:del:{row_id}"
+                    t("delete_button", lang), callback_data=f"a:del:{row_id}"
                 ),
             ],
         ]
     )
     await update.message.reply_text(
-        format_view_detail(record),
+        format_view_detail(record, lang=lang),
         parse_mode="HTML",
         reply_markup=keyboard,
     )
 
 
 async def sheet_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     url = f"https://docs.google.com/spreadsheets/d/{GOOGLE_SHEET_ID}"
     await update.message.reply_text(
-        f"📊 <b>{t('sheet_title', 'vi')}</b>\n{url}", parse_mode="HTML"
+        f"📊 <b>{t('sheet_title', lang)}</b>\n{url}", parse_mode="HTML"
     )
 
 
@@ -292,7 +301,7 @@ async def addcategory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text(
             f"❌ <b>{t('search_syntax', lang)}</b> /addcategory <i>name</i>\n"
-            "Vi du: /addcategory Science",
+            f"{_example(lang, '/addcategory Science')}",
             parse_mode="HTML",
         )
         return
@@ -305,7 +314,7 @@ async def addcategory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_cat = context.args[0].capitalize()
     if new_cat in CATEGORIES:
         await update.message.reply_text(
-            f"🏷 Category '{new_cat}' {t('category_exists', lang)}.",
+            f"🏷 {new_cat} {t('category_exists', lang)}.",
             parse_mode="HTML",
         )
         return

@@ -14,12 +14,18 @@ from bot.utils.formatting import (
     format_processing,
     format_error,
 )
+from bot.utils.validation import validate_url, sanitize_html, validate_tags
 
 scraper = ScraperService()
 gemini = GeminiService()
 settings_service = SettingsService()
 
 URL_REGEX = re.compile(r"https?://\S+")
+
+
+def _get_lang(update: Update) -> str:
+    user_id = str(update.message.from_user.id)
+    return settings_service.get_user_settings(user_id)["language"]
 
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -30,7 +36,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     user = update.message.from_user
     user_name = user.first_name or str(user.id)
-    lang = settings_service.get_user_settings(str(user.id))["language"]
+    lang = _get_lang(update)
 
     parsed = parse_link_input(text)
     url = parsed["url"]
@@ -38,12 +44,24 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not url:
         await update.message.reply_text(
             format_error(
-                "Link khong hop le. URL phai bat dau bang http:// hoac https://",
-                "Gui lai link dung format",
+                t("invalid_url", lang),
+                t("retry_with_valid_link", lang),
+                lang=lang,
             ),
             parse_mode="HTML",
         )
         return
+
+    valid, msg = validate_url(url)
+    if not valid:
+        await update.message.reply_text(
+            format_error(msg, lang=lang), parse_mode="HTML"
+        )
+        return
+
+    tags_valid, tags_msg = validate_tags(parsed["tags"])
+    if not tags_valid:
+        parsed["tags"] = parsed["tags"][:10]
 
     existing_row = sheets.find_by_url(url)
     if existing_row:
@@ -61,11 +79,11 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     processing_msg = await update.message.reply_text(
-        format_processing(), parse_mode="HTML"
+        format_processing(lang), parse_mode="HTML"
     )
 
     metadata = scraper.fetch_metadata(url)
-    title = metadata["title"]
+    title = sanitize_html(metadata["title"])
     source = metadata["source"]
     thumbnail = metadata["thumbnail"]
 
@@ -74,7 +92,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not ai_summary and metadata["success"]:
         ai_summary = metadata.get("description", "")[:300]
     elif not ai_summary:
-        ai_summary = "Chua co tom tat"
+        ai_summary = t("no_summary", lang)
 
     row_id = sheets.append_link(
         url=url,
@@ -94,22 +112,22 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [
             [
                 InlineKeyboardButton(
-                    "👁 View Details", callback_data=f"v:{row_id}"
+                    t("view_details_button", lang), callback_data=f"v:{row_id}"
                 ),
                 InlineKeyboardButton(
-                    "✏️ Edit", callback_data=f"a:edit:{row_id}"
+                    t("edit_button", lang), callback_data=f"a:edit:{row_id}"
                 ),
             ],
             [
                 InlineKeyboardButton(
-                    "🗑️ Delete", callback_data=f"a:del:{row_id}"
+                    t("delete_button", lang), callback_data=f"a:del:{row_id}"
                 )
             ],
         ]
     )
 
     success_text = format_save_success(
-        title, source, parsed["category"], parsed["priority"], ai_summary, row_id
+        title, source, parsed["category"], parsed["priority"], ai_summary, row_id, lang=lang
     )
 
     try:

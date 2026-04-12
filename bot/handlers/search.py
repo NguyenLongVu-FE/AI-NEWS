@@ -21,7 +21,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = _get_lang(update)
     if not context.args:
         await update.message.reply_text(
-            f"❌ <b>{t('search_syntax', lang)}</b> /search <i>keyword</i>\n"
+            f"❌ <b>{t('search_syntax', lang)}</b> /search <i>{t('search_keyword_placeholder', lang)}</i>\n"
             f"{t('search_example', lang)}",
             parse_mode="HTML",
         )
@@ -29,10 +29,13 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     keyword = " ".join(context.args)
     results = sheets.search(keyword)
-    await _send_results(update, results, f'Tim kiem: "{keyword}"')
+    await _send_results(
+        update, results, f'{t("search_label", lang)}: "{keyword}"', lang
+    )
 
 
 async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     category = ""
     priority = ""
     for arg in context.args or []:
@@ -43,10 +46,10 @@ async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sheets = get_sheets_service()
     results = sheets.filter_by(category=category or None, priority=priority or None)
     label = (
-        f"Loc: {f'@{category}' if category else ''} "
+        f"{t('filter_label', lang)}: {f'@{category}' if category else ''} "
         f"{f'!{priority}' if priority else ''}"
     ).strip()
-    await _send_results(update, results, label)
+    await _send_results(update, results, label, lang)
 
 
 async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -63,7 +66,7 @@ async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     all_tags.add(tg)
     if not all_tags:
         await update.message.reply_text(
-            format_empty_state(t("no_tags", lang)),
+            format_empty_state(t("no_tags", lang), lang=lang),
             parse_mode="HTML",
         )
         return
@@ -75,22 +78,25 @@ async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def unread(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     sheets = get_sheets_service()
     results = sheets.filter_by(status="chua_doc")
-    await _send_results(update, results, "Chua doc")
+    await _send_results(update, results, t("status_chua_doc", lang), lang)
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     sheets = get_sheets_service()
     records = sheets.get_all_records()
     today_str = datetime.now().strftime("%Y-%m-%d")
     results = [
         r for r in records if str(r.get("Ngay luu", "")).startswith(today_str)
     ]
-    await _send_results(update, results, "Hom nay")
+    await _send_results(update, results, t("today_label", lang), lang)
 
 
 async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = _get_lang(update)
     sheets = get_sheets_service()
     records = sheets.get_all_records()
     week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
@@ -99,18 +105,18 @@ async def week(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for r in records
         if str(r.get("Ngay luu", ""))[:10] >= week_ago
     ]
-    await _send_results(update, results, "Tuan nay")
+    await _send_results(update, results, t("week_label", lang), lang)
 
 
-async def _send_results(update, results, label):
+async def _send_results(update: Update, results, label: str, lang: str):
     if not results:
         await update.message.reply_text(
-            format_empty_state(f"Khong co noi dung cho: {label}"),
+            format_empty_state(t("no_content_for", lang, label=label), lang=lang),
             parse_mode="HTML",
         )
         return
     page = results[:PAGE_SIZE]
-    text = f"🔍 <b>{label}</b>\nTim thay {len(results)} ket qua:\n\n"
+    text = f"🔍 <b>{label}</b>\n{t('search_results', lang)} {len(results)} {t('results', lang)}:\n\n"
     for i, r in enumerate(page, 1):
         title = r.get("Tieu de", "N/A")
         source = r.get("Nguon", "N/A")
@@ -134,8 +140,8 @@ async def _send_results(update, results, label):
     if len(results) > PAGE_SIZE:
         buttons.append(
             [
-                InlineKeyboardButton("◀️ 1/2", callback_data="p:srch:1"),
-                InlineKeyboardButton("Next ▶️", callback_data="p:srch:2"),
+                InlineKeyboardButton(f"◀️ {t('prev_label', lang)}", callback_data="p:srch:1"),
+                InlineKeyboardButton(f"{t('next_label', lang)} ▶️", callback_data="p:srch:2"),
             ]
         )
     await update.message.reply_text(
