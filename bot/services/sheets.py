@@ -274,13 +274,6 @@ class SheetsService:
         self.update_cell(row_number, col, value)
         return True
 
-    def append_note_by_id(self, row_id: int | str, note: str) -> bool:
-        row_number = self.resolve_row_index_by_id(row_id)
-        if row_number is None:
-            return False
-        self.append_note(row_number, note)
-        return True
-
     def delete_row_by_id(self, row_id: int | str) -> bool:
         row_number = self.resolve_row_index_by_id(row_id)
         if row_number is None:

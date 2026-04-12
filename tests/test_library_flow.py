@@ -136,20 +136,38 @@ class _ManageSheets:
         self.upsert_calls = []
         self.get_row_calls = []
         self.get_row_by_id_calls = []
+        self.records_by_id = {
+            15: {
+                "ID": "15",
+                "Library Group": "icons",
+                "Tieu de": "Lucide",
+                "Uu tien": "medium",
+                "Trang thai": "chua_doc",
+            }
+        }
 
     def get_row(self, row: int):
         self.get_row_calls.append(row)
-        return {"ID": "99", "Library Group": "forms", "Tieu de": "Wrong row"}
+        record = self.records_by_id.get(row)
+        return dict(record) if record else None
 
     def get_row_by_id(self, row_id: int):
         self.get_row_by_id_calls.append(row_id)
-        return {"ID": str(row_id), "Library Group": "icons", "Tieu de": "Lucide"}
+        record = self.records_by_id.get(row_id)
+        return dict(record) if record else None
 
     def update_cell(self, row: int, col: int, value: str):
         self.update_cell_calls.append((row, col, value))
+        record = self.records_by_id.get(row)
+        if record:
+            record[SHEET_HEADERS[col - 1]] = value
 
     def update_cell_by_id(self, row_id: int, col: int, value: str):
         self.update_cell_by_id_calls.append((row_id, col, value))
+        record = self.records_by_id.get(row_id)
+        if not record:
+            return False
+        record[SHEET_HEADERS[col - 1]] = value
         return True
 
     def remove_library_row(self, row_id: str, group: str):
@@ -164,30 +182,65 @@ class _CallbackSheets:
         self.deleted_rows = []
         self.deleted_row_ids = []
         self.remove_calls = []
+        self.update_cell_calls = []
+        self.update_cell_by_id_calls = []
+        self.upsert_calls = []
         self.get_row_calls = []
         self.get_row_by_id_calls = []
+        self.records_by_id = {
+            7: {
+                "ID": "7",
+                "Library Group": "icons",
+                "Tieu de": "Icon docs",
+                "Uu tien": "medium",
+                "Trang thai": "chua_doc",
+            }
+        }
 
     def get_row(self, row: int):
         self.get_row_calls.append(row)
-        return {"ID": "99", "Library Group": "forms", "Tieu de": "Wrong row"}
+        record = self.records_by_id.get(row)
+        return dict(record) if record else None
 
     def get_row_by_id(self, row_id: int):
         self.get_row_by_id_calls.append(row_id)
-        return {"ID": str(row_id), "Library Group": "icons", "Tieu de": "Icon docs"}
+        record = self.records_by_id.get(row_id)
+        return dict(record) if record else None
 
     def delete_row(self, row: int):
         self.deleted_rows.append(row)
+        self.records_by_id.pop(row, None)
 
     def delete_row_by_id(self, row_id: int):
         self.deleted_row_ids.append(row_id)
+        self.records_by_id.pop(row_id, None)
+        return True
+
+    def update_cell(self, row: int, col: int, value: str):
+        self.update_cell_calls.append((row, col, value))
+        record = self.records_by_id.get(row)
+        if record:
+            record[SHEET_HEADERS[col - 1]] = value
+
+    def update_cell_by_id(self, row_id: int, col: int, value: str):
+        self.update_cell_by_id_calls.append((row_id, col, value))
+        record = self.records_by_id.get(row_id)
+        if not record:
+            return False
+        record[SHEET_HEADERS[col - 1]] = value
         return True
 
     def remove_library_row(self, row_id: str, group: str):
         self.remove_calls.append((row_id, group))
 
+    def upsert_library_row(self, record: dict):
+        self.upsert_calls.append(dict(record))
+
 
 @pytest.mark.asyncio
-async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(monkeypatch):
+async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(
+    monkeypatch, caplog
+):
     sheets = _LinkSheets(upsert_raises=True)
     link_module = _load_handler_module(monkeypatch, "bot.handlers.link", sheets)
 
@@ -228,7 +281,8 @@ async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(mo
     )
 
     update = _DummyUpdate(text="https://ui.shadcn.com/docs/components/button")
-    await link_module.handle_link(update, _DummyContext())
+    with caplog.at_level("WARNING"):
+        await link_module.handle_link(update, _DummyContext())
 
     assert sheets.append_kwargs["library_group"] == "shadcn"
     assert sheets.get_row_calls == []
@@ -236,6 +290,7 @@ async def test_link_save_sync_uses_override_and_mirror_upsert_is_non_blocking(mo
     assert len(sheets.upsert_records) == 1
     assert update.message.editables[0].edits
     assert "Saved successfully!" in update.message.editables[0].edits[0]["text"]
+    assert "Mirror upsert failed for row_id=9" in caplog.text
 
 
 @pytest.mark.asyncio
@@ -302,13 +357,78 @@ async def test_edit_library_group_moves_between_mirror_sheets(monkeypatch):
 
     group_col = SHEET_HEADERS.index("Library Group") + 1
     assert sheets.get_row_calls == []
-    assert sheets.get_row_by_id_calls == [15]
+    assert sheets.get_row_by_id_calls == [15, 15]
     assert sheets.update_cell_calls == []
     assert sheets.update_cell_by_id_calls == [(15, group_col, "shadcn")]
     assert sheets.remove_calls == [("15", "icons")]
     assert len(sheets.upsert_calls) == 1
     assert sheets.upsert_calls[0]["Library Group"] == "shadcn"
     assert "library_group: → shadcn" in update.message.replies[0]["text"]
+
+
+@pytest.mark.asyncio
+async def test_edit_non_library_field_syncs_mirror_row(monkeypatch):
+    sheets = _ManageSheets()
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    context = _DummyContext(args=["15", "title", "New Lucide"])
+    await manage_module.edit_cmd(update, context)
+
+    title_col = SHEET_HEADERS.index("Tieu de") + 1
+    assert sheets.get_row_by_id_calls == [15, 15]
+    assert sheets.update_cell_by_id_calls == [(15, title_col, "New Lucide")]
+    assert sheets.remove_calls == []
+    assert len(sheets.upsert_calls) == 1
+    assert sheets.upsert_calls[0]["Tieu de"] == "New Lucide"
+    assert "title: → New Lucide" in update.message.replies[0]["text"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("command_name", "args", "column", "field_name", "expected_value"),
+    [
+        ("status_cmd", ["15", "dang_doc"], 11, "Trang thai", "dang_doc"),
+        ("priority_cmd", ["15", "high"], 10, "Uu tien", "high"),
+    ],
+)
+async def test_status_and_priority_commands_sync_mirror(
+    monkeypatch, command_name, args, column, field_name, expected_value
+):
+    sheets = _ManageSheets()
+    manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
+
+    update = _DummyUpdate()
+    command = getattr(manage_module, command_name)
+    await command(update, _DummyContext(args=args))
+
+    assert sheets.update_cell_by_id_calls == [(15, column, expected_value)]
+    assert len(sheets.upsert_calls) == 1
+    assert sheets.upsert_calls[0][field_name] == expected_value
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("callback_data", "column", "field_name", "expected_value"),
+    [
+        ("s:status:7:dang_doc", 11, "Trang thai", "dang_doc"),
+        ("s:priority:7:high", 10, "Uu tien", "high"),
+    ],
+)
+async def test_callback_status_and_priority_sync_mirror(
+    monkeypatch, callback_data, column, field_name, expected_value
+):
+    sheets = _CallbackSheets()
+    callback_module = _load_handler_module(monkeypatch, "bot.handlers.callback", sheets)
+    monkeypatch.setattr(callback_module, "_get_lang", lambda _query: "en")
+
+    update = _DummyCallbackUpdate(callback_data)
+    await callback_module.handle_callback(update, _DummyContext())
+
+    assert update.callback_query.answer_calls == 1
+    assert sheets.update_cell_by_id_calls == [(7, column, expected_value)]
+    assert len(sheets.upsert_calls) == 1
+    assert sheets.upsert_calls[0][field_name] == expected_value
 
 
 @pytest.mark.asyncio

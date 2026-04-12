@@ -1,3 +1,4 @@
+import logging
 import re
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -20,6 +21,7 @@ from bot.utils.validation import validate_url, sanitize_html, validate_tags
 scraper = ScraperService()
 gemini = GeminiService()
 settings_service = SettingsService()
+logger = logging.getLogger(__name__)
 
 URL_REGEX = re.compile(r"https?://\S+")
 
@@ -156,7 +158,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if saved_record:
             sheets.upsert_library_row(saved_record)
     except Exception:
-        pass
+        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
 
     if not metadata["success"]:
         try:

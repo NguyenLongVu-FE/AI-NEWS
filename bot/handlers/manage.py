@@ -1,3 +1,5 @@
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, ContextTypes
 
@@ -17,6 +19,7 @@ from bot.services.library_groups import normalize_library_group
 from bot.utils.formatting import format_view_detail, format_error
 
 settings_service = SettingsService()
+logger = logging.getLogger(__name__)
 
 
 def _get_lang(update: Update) -> str:
@@ -39,6 +42,35 @@ def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
         return sheets.update_cell_by_id(row_id, col, value)
     sheets.update_cell(row_id, col, value)
     return True
+
+
+def _sync_library_mirror(sheets, row_id: int, previous_record: dict | None = None):
+    updated_record = _get_record_by_id(sheets, row_id)
+    if not updated_record:
+        logger.warning(
+            "Mirror sync skipped for row_id=%s: record not found after update", row_id
+        )
+        return
+
+    if previous_record is not None:
+        old_group = normalize_library_group(previous_record.get("Library Group")) or "utils"
+        new_group = normalize_library_group(updated_record.get("Library Group")) or "utils"
+        if old_group != new_group:
+            record_id = str(updated_record.get("ID", "")).strip() or str(row_id)
+            try:
+                sheets.remove_library_row(record_id, old_group)
+            except Exception:
+                logger.warning(
+                    "Mirror move cleanup failed for row_id=%s from group=%s",
+                    row_id,
+                    old_group,
+                    exc_info=True,
+                )
+
+    try:
+        sheets.upsert_library_row(updated_record)
+    except Exception:
+        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
 
 
 async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -70,14 +102,19 @@ async def status_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
     old_status = record.get("Trang thai", "")
-    sheets.update_cell(row_id, 11, status)
+    if not _update_cell_by_id(sheets, row_id, 11, status):
+        await update.message.reply_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
+        )
+        return
+    _sync_library_mirror(sheets, row_id)
     await update.message.reply_text(
         f"✅ <b>{t('status_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
         f"📌 {t('status_label', lang)}: {old_status} → {status}",
@@ -155,13 +192,18 @@ async def priority_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML",
         )
         return
-    record = sheets.get_row(row_id)
+    record = _get_record_by_id(sheets, row_id)
     if not record:
         await update.message.reply_text(
             format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
         )
         return
-    sheets.update_cell(row_id, 10, priority)
+    if not _update_cell_by_id(sheets, row_id, 10, priority):
+        await update.message.reply_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang), parse_mode="HTML"
+        )
+        return
+    _sync_library_mirror(sheets, row_id)
     await update.message.reply_text(
         f"✅ <b>{t('priority_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"
         f"🔴 {t('priority_label', lang)}: {record.get('Uu tien', '')} → {priority}",
@@ -274,17 +316,11 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    if field == "library_group":
-        old_group = normalize_library_group(record.get("Library Group")) or "utils"
-        if old_group != value_to_save:
-            updated_record = dict(record)
-            updated_record["Library Group"] = value_to_save
-            record_id = str(updated_record.get("ID", "")).strip() or str(row_id)
-            try:
-                sheets.remove_library_row(record_id, old_group)
-                sheets.upsert_library_row(updated_record)
-            except Exception:
-                pass
+    _sync_library_mirror(
+        sheets,
+        row_id,
+        previous_record=record if field == "library_group" else None,
+    )
 
     await update.message.reply_text(
         f"✅ <b>{t('edit_updated', lang)}</b>\n\n📄 <b>{record.get('Tieu de', '')}</b>\n"

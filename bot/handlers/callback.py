@@ -1,3 +1,5 @@
+import logging
+
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CallbackQueryHandler, ContextTypes
 
@@ -8,6 +10,7 @@ from bot.services.library_groups import normalize_library_group
 from bot.utils.formatting import format_view_detail, format_error
 
 settings_service = SettingsService()
+logger = logging.getLogger(__name__)
 
 
 def _get_lang(query) -> str:
@@ -26,6 +29,27 @@ def _delete_row_by_id(sheets, row_id: int) -> bool:
         return sheets.delete_row_by_id(row_id)
     sheets.delete_row(row_id)
     return True
+
+
+def _update_cell_by_id(sheets, row_id: int, col: int, value: str) -> bool:
+    if hasattr(sheets, "update_cell_by_id"):
+        return sheets.update_cell_by_id(row_id, col, value)
+    sheets.update_cell(row_id, col, value)
+    return True
+
+
+def _sync_library_mirror(sheets, row_id: int):
+    updated_record = _get_record_by_id(sheets, row_id)
+    if not updated_record:
+        logger.warning(
+            "Mirror sync skipped for row_id=%s: record not found after update", row_id
+        )
+        return
+
+    try:
+        sheets.upsert_library_row(updated_record)
+    except Exception:
+        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
 
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,7 +156,12 @@ async def _handle_delete_execute(query, row_id, confirmed, sheets, lang: str):
             try:
                 sheets.remove_library_row(record_id, record_group)
             except Exception:
-                pass
+                logger.warning(
+                    "Mirror cleanup failed for deleted row_id=%s in group=%s",
+                    row_id,
+                    record_group,
+                    exc_info=True,
+                )
         await query.edit_message_text(f"✅ <b>{t('deleted', lang)}</b>", parse_mode="HTML")
     else:
         await _handle_view(query, row_id, sheets, lang)
@@ -176,7 +205,13 @@ async def _handle_status_menu(query, row_id, lang: str):
 
 
 async def _handle_status_set(query, row_id, status, sheets, lang: str):
-    sheets.update_cell(row_id, 11, status)
+    if not _update_cell_by_id(sheets, row_id, 11, status):
+        await query.edit_message_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang),
+            parse_mode="HTML",
+        )
+        return
+    _sync_library_mirror(sheets, row_id)
     await _handle_view(query, row_id, sheets, lang)
 
 
@@ -212,7 +247,13 @@ async def _handle_priority_menu(query, row_id, lang: str):
 
 
 async def _handle_priority_set(query, row_id, priority, sheets, lang: str):
-    sheets.update_cell(row_id, 10, priority)
+    if not _update_cell_by_id(sheets, row_id, 10, priority):
+        await query.edit_message_text(
+            format_error(f"{t('not_found', lang)} {row_id}", lang=lang),
+            parse_mode="HTML",
+        )
+        return
+    _sync_library_mirror(sheets, row_id)
     await _handle_view(query, row_id, sheets, lang)
 
 
