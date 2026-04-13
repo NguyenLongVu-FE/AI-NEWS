@@ -14,21 +14,19 @@ InfoSaver Bot là Telegram bot giúp lưu link (TikTok, YouTube, Facebook, Web, 
 2. Telegram gọi webhook của ứng dụng (`/webhook` hoặc đường dẫn deploy tương đương `/api/webhook`).
 3. Bot phân tích nội dung tin nhắn:
    - URL
-   - `#tag`
-   - `!priority` (`high|medium|low`)
-   - `@category`
-   - `~library_group` (ghi đè nhóm thư viện)
+   - `#keyword`
+   - `@topic`
    - phần text còn lại là ghi chú.
 4. Bot kiểm tra URL hợp lệ, kiểm tra số lượng tag.
 5. Bot xử lý nội dung:
    - Scrape title/description/thumbnail từ trang.
    - Tóm tắt AI bằng Gemini 2.5 Flash.
    - Xác định nguồn (TikTok/YouTube/Facebook/Twitter/X/Web).
-   - Tự động phân loại chủ đề theo nội dung link nếu không truyền `@category`.
+   - Tự động phân loại chủ đề theo nội dung link nếu không truyền `@topic`.
    - Không dùng category `Other`; fallback mặc định là `Tech`.
-   - Xác định `Library Group` (ưu tiên `~group`, nếu không có thì auto detect).
+   - Tự động gán từ khóa theo nội dung URL/title/summary và gộp với `#keyword` do người dùng nhập.
 6. Bot lưu dữ liệu vào sheet chính (main sheet).
-7. Bot đồng bộ bản ghi sang sheet mirror theo nhóm `LIB_<group>`.
+7. Mỗi chủ đề được lưu trong một sheet riêng theo chuẩn `TOPIC_<slug>`.
 8. Bot phản hồi trong Telegram kèm ID để quản lý tiếp.
 
 ### Xử lý link trùng
@@ -52,18 +50,19 @@ InfoSaver Bot là Telegram bot giúp lưu link (TikTok, YouTube, Facebook, Web, 
 
 Sheet chính dùng các cột:
 
-`ID, Ngay luu, Tieu de, Link goc, Nguon, Tom tat AI, Ghi chu tay, Chu de, Tags, Uu tien, Trang thai, Nguoi luu, Thumbnail, Library Group, Nhac nho`
+`ID, Ngay luu, Tieu de, Link goc, Nguon, Tom tat AI, Ghi chu tay, Chu de, Tu khoa, Nguoi luu, Thumbnail`
 
-Mirror sheet theo nhóm:
+Sheet dữ liệu theo chủ đề:
 
-- `LIB_animation`
-- `LIB_shadcn`
-- `LIB_icons`
-- `LIB_charts`
-- `LIB_forms`
-- `LIB_table`
-- `LIB_state-management`
-- `LIB_utils`
+- `TOPIC_ai-agent`
+- `TOPIC_fe`
+- `TOPIC_uiux`
+- ...
+
+Sheet tổng quan:
+
+- `DASHBOARD` (tự cập nhật theo dữ liệu `TOPIC_*`).
+- Gồm KPI tổng hệ thống và bảng theo chủ đề: tổng link, mới hôm nay, mới 7 ngày, top từ khóa, URL mở nhanh.
 
 ---
 
@@ -74,15 +73,13 @@ Mirror sheet theo nhóm:
 Ví dụ:
 
 ```text
-https://ui.shadcn.com/docs/components/button #ui #react !high @tech ~shadcn cần áp dụng cho project A
+https://example.com/agentic-workflow #skill #plan @ai-agent cần áp dụng cho project A
 ```
 
 Quy ước:
 
-- `#...` là tag
-- `!...` là độ ưu tiên (`high|medium|low`)
-- `@...` là category
-- `~...` là library group (nếu muốn tự chỉ định)
+- `#...` là từ khóa
+- `@...` là chủ đề
 - phần còn lại là ghi chú
 
 Category mặc định bot tự phân loại gồm:
@@ -94,23 +91,18 @@ Category mặc định bot tự phân loại gồm:
 |---|---|---|
 | Cơ bản | `/start`, `/help` | Bắt đầu và xem hướng dẫn |
 | Tìm kiếm/lọc | `/search <keyword>` | Tìm theo tiêu đề/tóm tắt/tags |
-|  | `/filter @category !priority` | Lọc theo category và priority |
+|  | `/filter @topic #keyword` | Lọc theo chủ đề và từ khóa |
 |  | `/tags` | Xem danh sách tags |
-|  | `/unread`, `/today`, `/week` | Lọc nhanh theo trạng thái/thời gian |
+|  | `/topics`, `/today`, `/week` | Danh sách chủ đề + lọc theo thời gian |
 | Quản lý bản ghi | `/view <ID>` | Xem chi tiết |
-|  | `/status <ID> <chua_doc/dang_doc/da_nghien_cuu/da_ap_dung>` | Đổi trạng thái |
-|  | `/priority <ID> <high/medium/low>` | Đổi ưu tiên |
 |  | `/note <ID> <noi_dung>` | Thêm ghi chú |
-|  | `/edit <ID> <field> <value>` | Sửa trường (`title`, `notes`, `category`, `tags`, `library_group`) |
+|  | `/edit <ID> <field> <value>` | Sửa trường (`title`, `notes`, `category`, `keywords`) |
 |  | `/delete <ID>` | Xóa bản ghi (có xác nhận) |
 | Sheet | `/sheet` | Lấy link Google Sheets |
+| Dashboard | (trong Google Sheets) `DASHBOARD` | Theo dõi tổng quan theo chủ đề |
 | Ngôn ngữ | `/lang vi`, `/lang en` | Đổi ngôn ngữ UI bot |
-| Nhắc nhở | `/remind on`, `/remind off` | Bật/tắt daily digest |
 | Xuất dữ liệu | `/export` | Xuất file Excel |
 | Thống kê | `/stats`, `/stats week` | Thống kê tháng/tuần |
-| Thư viện UI | `/lib` | Xem số lượng theo library group |
-|  | `/lib <group>` | Xem nhanh dữ liệu theo group |
-|  | `/lib sheet <group>` | Tạo/cập nhật mirror sheet theo group |
 | Admin | `/addcategory <name>` | Thêm category (chỉ admin) |
 
 ---
@@ -172,4 +164,4 @@ python scripts/deploy_checks.py --base-url "https://<your-domain>"
 
 - Nếu bật `TELEGRAM_WEBHOOK_SECRET`, request sai secret sẽ trả `{"ok": false, "error": "unauthorized"}`.
 - Khi lỗi HTTP tăng đột biến (>=5 lỗi trong 10 phút), hệ thống gửi cảnh báo cho admin Telegram.
-- Nếu mirror sheet bị lệch dữ liệu, chạy lại `/lib sheet <group>` để backfill từ sheet chính.
+- Daily digest đã tắt trong mô hình topic-first (không còn cột trạng thái/ưu tiên).

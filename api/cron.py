@@ -9,7 +9,6 @@ from fastapi import APIRouter
 
 from bot.config import ADMIN_TELEGRAM_ID, TELEGRAM_BOT_TOKEN
 from bot.services.export import ExportService
-from bot.services.reminder import ReminderService
 
 router = APIRouter()
 
@@ -17,30 +16,13 @@ router = APIRouter()
 @router.get("/cron/digest")
 @router.get("/api/cron/digest")
 async def cron_digest():
-    reminder = ReminderService()
-    digests = reminder.get_all_digests()
-    sent = 0
-    failed = 0
-
-    async with httpx.AsyncClient() as client:
-        for d in digests:
-            try:
-                response = await client.post(
-                    f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage",
-                    json={
-                        "chat_id": d["user_id"],
-                        "text": d["message"],
-                        "parse_mode": "HTML",
-                    },
-                )
-                if response.is_success:
-                    sent += 1
-                else:
-                    failed += 1
-            except httpx.HTTPError:
-                failed += 1
-
-    return {"sent": sent, "failed": failed, "total_users": len(digests)}
+    return {
+        "enabled": False,
+        "reason": "digest_disabled_in_topic_model",
+        "sent": 0,
+        "failed": 0,
+        "total_users": 0,
+    }
 
 
 @router.get("/cron/backup")

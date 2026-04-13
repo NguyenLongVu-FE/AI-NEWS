@@ -28,13 +28,8 @@ class StatsService:
         ]
 
         total = len(filtered)
-        read_count = sum(
-            1 for r in filtered
-            if r.get("Trang thai", "") in ("da_nghien_cuu", "da_ap_dung")
-        )
-        unread_count = sum(
-            1 for r in filtered if r.get("Trang thai", "") == "chua_doc"
-        )
+        read_count = 0
+        unread_count = 0
 
         contributors = Counter(str(r.get("Nguoi luu", "")) for r in filtered)
         categories = Counter(str(r.get("Chu de", "")) for r in filtered)

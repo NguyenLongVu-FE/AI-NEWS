@@ -29,13 +29,9 @@ class ExportService:
             ("Tom tat AI", "Tóm tắt AI"),
             ("Ghi chu tay", "Ghi chú tay"),
             ("Chu de", "Chủ đề"),
-            ("Tags", "Tags"),
-            ("Uu tien", "Ưu tiên"),
-            ("Trang thai", "Trạng thái"),
+            ("Tags", "Từ khóa"),
             ("Nguoi luu", "Người lưu"),
             ("Thumbnail", "Thumbnail"),
-            ("Library Group", "Library Group"),
-            ("Nhac nho", "Nhắc nhở"),
         ]
 
         wb = openpyxl.Workbook()
@@ -50,28 +46,9 @@ class ExportService:
             cell.fill = header_fill
             cell.alignment = Alignment(horizontal="center")
 
-        high_fill = PatternFill(start_color="F4CCCC", end_color="F4CCCC", fill_type="solid")
-        medium_fill = PatternFill(start_color="FFF2CC", end_color="FFF2CC", fill_type="solid")
-        low_fill = PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid")
-        applied_fill = PatternFill(start_color="D0E0E3", end_color="D0E0E3", fill_type="solid")
-
         for row_idx, record in enumerate(records, 2):
             for col_idx, (key, _) in enumerate(columns, 1):
                 ws.cell(row=row_idx, column=col_idx, value=record.get(key, ""))
-
-            priority = str(record.get("Uu tien", "")).strip().lower()
-            status = str(record.get("Trang thai", "")).strip().lower()
-            priority_cell = ws.cell(row=row_idx, column=10)
-            status_cell = ws.cell(row=row_idx, column=11)
-            if priority == "high":
-                priority_cell.fill = high_fill
-            elif priority == "medium":
-                priority_cell.fill = medium_fill
-            elif priority == "low":
-                priority_cell.fill = low_fill
-
-            if status == "da_ap_dung":
-                status_cell.fill = applied_fill
 
         ws.column_dimensions["A"].width = 6
         ws.column_dimensions["B"].width = 18
@@ -82,12 +59,8 @@ class ExportService:
         ws.column_dimensions["G"].width = 30
         ws.column_dimensions["H"].width = 15
         ws.column_dimensions["I"].width = 25
-        ws.column_dimensions["J"].width = 10
-        ws.column_dimensions["K"].width = 15
-        ws.column_dimensions["L"].width = 15
-        ws.column_dimensions["M"].width = 30
-        ws.column_dimensions["N"].width = 18
-        ws.column_dimensions["O"].width = 15
+        ws.column_dimensions["J"].width = 15
+        ws.column_dimensions["K"].width = 30
 
         ws.freeze_panes = "A2"
         last_column = get_column_letter(len(columns))

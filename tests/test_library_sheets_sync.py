@@ -1,10 +1,7 @@
 import gspread
-from gspread.utils import ValueInputOption, rowcol_to_a1
 
-from bot.config import SHEET_HEADERS, SHEET_DISPLAY_HEADERS
+from bot.config import SHEET_DISPLAY_HEADERS, SHEET_HEADERS, TOPIC_SHEET_PREFIX
 from bot.services.sheets import SheetsService
-
-LEGACY_SHEET_HEADERS = [header for header in SHEET_HEADERS if header != "Library Group"]
 
 
 class _FakeCell:
@@ -13,18 +10,17 @@ class _FakeCell:
 
 
 class _FakeWorksheet:
+    _next_sheet_id = 1
+
     def __init__(self, title: str, headers=None, rows=None):
         self.title = title
         self.headers = list(headers or [])
         self.data_rows = [list(row) for row in (rows or [])]
         self.update_calls = []
         self.appended_rows = []
-        self.updated_cells = []
         self.deleted_rows = []
-
-    def acell(self, _label: str):
-        value = self.headers[0] if self.headers else ""
-        return _FakeCell(value)
+        self._properties = {"sheetId": _FakeWorksheet._next_sheet_id}
+        _FakeWorksheet._next_sheet_id += 1
 
     def row_values(self, row: int):
         if row == 1:
@@ -46,7 +42,6 @@ class _FakeWorksheet:
         self.update_calls.append((range_name, values, value_input_option))
         if not values:
             return
-
         start_ref = (range_name or "A1").split(":")[0]
         row_digits = "".join(char for char in start_ref if char.isdigit())
         row_number = int(row_digits) if row_digits else 1
@@ -66,7 +61,6 @@ class _FakeWorksheet:
         self.data_rows.append(row)
 
     def update_cell(self, row: int, col: int, value: str):
-        self.updated_cells.append((row, col, value))
         if row == 1:
             while len(self.headers) < col:
                 self.headers.append("")
@@ -80,243 +74,258 @@ class _FakeWorksheet:
             self.data_rows[index].append("")
         self.data_rows[index][col - 1] = value
 
-    def delete_rows(self, row: int):
-        self.deleted_rows.append(row)
-        index = row - 2
-        if 0 <= index < len(self.data_rows):
-            self.data_rows.pop(index)
+    def delete_rows(self, start_index: int, end_index: int | None = None):
+        if end_index is None:
+            end_index = start_index
+        self.deleted_rows.append((start_index, end_index))
+        start = max(start_index - 2, 0)
+        end = max(end_index - 1, 0)
+        del self.data_rows[start:end]
 
     def get_all_records(self):
         records = []
         for row in self.data_rows:
-            record = {}
-            for index, header in enumerate(self.headers):
-                record[header] = row[index] if index < len(row) else ""
-            records.append(record)
+            padded = list(row) + [""] * (len(self.headers) - len(row))
+            records.append(dict(zip(self.headers, padded)))
         return records
+
+    def clear(self):
+        self.headers = []
+        self.data_rows = []
+
+    def update_title(self, new_title: str):
+        self.title = new_title
+
+    def cell(self, row: int, col: int):
+        if row == 1:
+            value = self.headers[col - 1] if col - 1 < len(self.headers) else ""
+            return _FakeCell(value)
+        index = row - 2
+        if 0 <= index < len(self.data_rows):
+            value = self.data_rows[index][col - 1] if col - 1 < len(self.data_rows[index]) else ""
+            return _FakeCell(value)
+        return _FakeCell("")
 
 
 class _FakeSpreadsheet:
-    def __init__(self, sheet1: _FakeWorksheet):
-        self.sheet1 = sheet1
-        self._worksheets = {sheet1.title: sheet1}
+    def __init__(self, worksheets):
+        self._worksheets = list(worksheets)
+        self.batch_requests = []
+        self.deleted_titles = []
         self.add_calls = []
 
+    def worksheets(self):
+        return list(self._worksheets)
+
     def worksheet(self, name: str):
-        if name in self._worksheets:
-            return self._worksheets[name]
+        for ws in self._worksheets:
+            if ws.title == name:
+                return ws
         raise gspread.WorksheetNotFound(name)
 
     def add_worksheet(self, title: str, rows: int, cols: int):
         ws = _FakeWorksheet(title=title)
-        self._worksheets[title] = ws
+        self._worksheets.append(ws)
         self.add_calls.append((title, rows, cols))
         return ws
 
+    def del_worksheet(self, ws):
+        self.deleted_titles.append(ws.title)
+        self._worksheets = [item for item in self._worksheets if item is not ws]
 
-def _make_service(headers=None, rows=None):
-    main_sheet = _FakeWorksheet(
-        "Sheet1", headers=headers or SHEET_DISPLAY_HEADERS, rows=rows
-    )
-    spreadsheet = _FakeSpreadsheet(main_sheet)
+    def batch_update(self, payload):
+        self.batch_requests.append(payload)
+
+
+def _make_service(worksheets):
     service = SheetsService.__new__(SheetsService)
-    service.spreadsheet = spreadsheet
-    return service, main_sheet, spreadsheet
+    service.spreadsheet = _FakeSpreadsheet(worksheets)
+    return service
 
 
-def test_sheet_headers_include_library_group_between_thumbnail_and_reminder():
-    thumbnail_index = SHEET_HEADERS.index("Thumbnail")
-    assert SHEET_HEADERS[thumbnail_index + 1] == "Library Group"
-    assert SHEET_HEADERS[thumbnail_index + 2] == "Nhac nho"
+def test_bootstrap_removes_legacy_data_sheets_and_keeps_settings():
+    legacy_sheet = _FakeWorksheet("Sheet1", headers=SHEET_DISPLAY_HEADERS, rows=[["1"]])
+    settings_sheet = _FakeWorksheet("Settings", headers=["user_id"], rows=[["100"]])
+    service = _make_service([legacy_sheet, settings_sheet])
+
+    service._bootstrap_topic_workspace()
+
+    titles = [ws.title for ws in service.spreadsheet.worksheets()]
+    assert "Settings" in titles
+    assert "Sheet1" not in titles
 
 
-def test_ensure_headers_uses_range_for_current_header_count():
-    service, main_sheet, _ = _make_service(headers=["ID"])
-    service._ensure_headers()
+def test_bootstrap_keeps_existing_dashboard_sheet():
+    legacy_sheet = _FakeWorksheet("Sheet1", headers=SHEET_DISPLAY_HEADERS, rows=[["1"]])
+    settings_sheet = _FakeWorksheet("Settings", headers=["user_id"], rows=[["100"]])
+    dashboard_sheet = _FakeWorksheet("DASHBOARD", headers=["k"], rows=[["v"]])
+    service = _make_service([legacy_sheet, settings_sheet, dashboard_sheet])
 
-    expected_range = f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
-    assert main_sheet.update_calls[0][0] == expected_range
-    assert main_sheet.headers == SHEET_DISPLAY_HEADERS
+    service._bootstrap_topic_workspace()
+
+    titles = [ws.title for ws in service.spreadsheet.worksheets()]
+    assert "Settings" in titles
+    assert "DASHBOARD" in titles
+    assert "Sheet1" not in titles
 
 
-def test_ensure_headers_migrates_legacy_layout_and_preserves_reminder_values():
-    service, main_sheet, _ = _make_service(
-        headers=LEGACY_SHEET_HEADERS,
+def test_append_link_creates_topic_sheet_with_new_schema():
+    service = _make_service([_FakeWorksheet("Settings", headers=["user_id"], rows=[])])
+
+    row_id = service.append_link(
+        url="https://example.com/agent",
+        title="AI Agent plan",
+        source="example.com",
+        ai_summary="summary",
+        notes="note",
+        category="AI Agent",
+        tags=["skill", "plan"],
+        user_name="Tester",
+        thumbnail="thumb.png",
+    )
+
+    assert row_id == 1
+    topic_ws = service.spreadsheet.worksheet(f"{TOPIC_SHEET_PREFIX}ai-agent")
+    assert topic_ws.headers == SHEET_DISPLAY_HEADERS
+    assert topic_ws.data_rows[0][SHEET_HEADERS.index("Chu de")] == "AI Agent"
+    assert topic_ws.data_rows[0][SHEET_HEADERS.index("Tags")] == "skill, plan"
+
+
+def test_append_link_triggers_dashboard_rebuild():
+    service = _make_service([_FakeWorksheet("Settings", headers=["user_id"], rows=[])])
+    calls = []
+    service._safe_rebuild_dashboard = lambda: calls.append("called")
+
+    service.append_link(
+        url="https://example.com/agent",
+        title="AI Agent plan",
+        source="example.com",
+        ai_summary="summary",
+        notes="note",
+        category="AI Agent",
+        tags=["skill", "plan"],
+        user_name="Tester",
+        thumbnail="thumb.png",
+    )
+
+    assert calls == ["called"]
+
+
+def test_find_by_url_returns_logical_id_across_topic_sheets():
+    ws_a = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}ai-agent",
+        headers=SHEET_DISPLAY_HEADERS,
+        rows=[["2", "", "", "https://example.com/a"]],
+    )
+    ws_b = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}fe",
+        headers=SHEET_DISPLAY_HEADERS,
+        rows=[["7", "", "", "https://example.com/b"]],
+    )
+    service = _make_service([ws_a, ws_b])
+
+    assert service.find_by_url("https://example.com/b") == "7"
+
+
+def test_merge_keywords_by_id_appends_unique_tokens():
+    ws = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}ai-agent",
+        headers=SHEET_DISPLAY_HEADERS,
+        rows=[
+            ["9", "", "Title", "https://example.com", "", "", "", "AI Agent", "skill", "", ""]
+        ],
+    )
+    service = _make_service([ws])
+
+    ok = service.merge_keywords_by_id(9, ["plan", "skill", "workflow"])
+
+    assert ok is True
+    assert ws.data_rows[0][SHEET_HEADERS.index("Tags")] == "skill, plan, workflow"
+
+
+def test_move_row_to_new_topic_sheet():
+    ws = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}tech",
+        headers=SHEET_DISPLAY_HEADERS,
+        rows=[
+            ["5", "", "Title", "https://example.com", "", "", "", "Tech", "python", "", ""]
+        ],
+    )
+    service = _make_service([ws])
+
+    moved = service.move_row_to_topic_by_id(5, "AI Agent")
+
+    assert moved is True
+    old_ws = service.spreadsheet.worksheet(f"{TOPIC_SHEET_PREFIX}tech")
+    new_ws = service.spreadsheet.worksheet(f"{TOPIC_SHEET_PREFIX}ai-agent")
+    assert old_ws.data_rows == []
+    assert new_ws.data_rows[0][SHEET_HEADERS.index("Chu de")] == "AI Agent"
+
+
+def test_rebuild_dashboard_sheet_writes_topic_summary():
+    ws_agent = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}ai-agent",
+        headers=SHEET_DISPLAY_HEADERS,
         rows=[
             [
                 "1",
-                "2024-01-02 03:04:05",
-                "Legacy row",
-                "https://example.com",
+                "2026-04-13 10:00:00",
+                "Agent A",
+                "https://example.com/a",
                 "example.com",
                 "summary",
-                "notes",
-                "Tech",
-                "legacy",
-                "high",
-                "chua_doc",
-                "tester",
-                "thumb.png",
-                "2026-06-01",
-            ]
+                "",
+                "AI Agent",
+                "skill, plan",
+                "Tester",
+                "",
+            ],
+            [
+                "2",
+                "2026-04-10 09:00:00",
+                "Agent B",
+                "https://example.com/b",
+                "example.com",
+                "summary",
+                "",
+                "AI Agent",
+                "plan",
+                "Tester",
+                "",
+            ],
         ],
     )
-
-    service._ensure_headers()
-
-    migrated_row = main_sheet.data_rows[0]
-    assert main_sheet.headers == SHEET_DISPLAY_HEADERS
-    assert migrated_row[SHEET_HEADERS.index("Library Group")] == ""
-    assert migrated_row[SHEET_HEADERS.index("Nhac nho")] == "2026-06-01"
-
-
-def test_append_link_defaults_library_group_to_utils():
-    service, main_sheet, _ = _make_service()
-    service.get_next_id = lambda: 10
-
-    row_id = service.append_link(
-        url="https://example.com",
-        title="Example",
-        source="example.com",
-        ai_summary="Summary",
-        notes="Notes",
-        category="Tech",
-        tags="docs",
-        priority="high",
-        status="chua_doc",
-        user_name="tester",
-        thumbnail="thumb.jpg",
+    ws_fe = _FakeWorksheet(
+        f"{TOPIC_SHEET_PREFIX}fe",
+        headers=SHEET_DISPLAY_HEADERS,
+        rows=[
+            [
+                "3",
+                "2026-04-13 11:00:00",
+                "FE C",
+                "https://example.com/c",
+                "example.com",
+                "summary",
+                "",
+                "FE",
+                "react",
+                "Tester",
+                "",
+            ],
+        ],
     )
+    service = _make_service([ws_agent, ws_fe])
 
-    saved_row, option = main_sheet.appended_rows[0]
-    assert row_id == 10
-    assert option == ValueInputOption.raw
-    assert saved_row[SHEET_HEADERS.index("Library Group")] == "utils"
-    assert saved_row[SHEET_HEADERS.index("Nhac nho")] == ""
+    service.rebuild_dashboard_sheet()
 
-
-def test_library_sheet_name_format():
-    service = SheetsService.__new__(SheetsService)
-    assert service._library_sheet_name("animation") == "LIB_animation"
-
-
-def test_ensure_library_sheet_creates_and_reuses_mirror_sheet():
-    service, _, spreadsheet = _make_service()
-
-    created = service.ensure_library_sheet("animation")
-    reused = service.ensure_library_sheet("animation")
-
-    assert created is reused
-    assert spreadsheet.add_calls == [("LIB_animation", 1000, len(SHEET_HEADERS))]
-    assert created.headers == SHEET_DISPLAY_HEADERS
-    assert created.update_calls[0][0] == f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
-
-
-def test_filter_by_library_group_is_case_insensitive():
-    service = SheetsService.__new__(SheetsService)
-    service.get_all_records = lambda: [
-        {"ID": "1", "Library Group": "shadcn"},
-        {"ID": "2", "Library Group": "icons"},
-        {"ID": "3", "Library Group": "ShAdCn"},
-    ]
-
-    result = service.filter_by_library_group("SHADCN")
-    assert [record["ID"] for record in result] == ["1", "3"]
-
-
-def test_upsert_library_row_appends_then_updates_existing_row():
-    service, _, _ = _make_service()
-
-    service.upsert_library_row({"ID": "42", "Library Group": "animation", "Tieu de": "First"})
-    mirror_sheet = service.ensure_library_sheet("animation")
-    assert len(mirror_sheet.data_rows) == 1
-    assert mirror_sheet.data_rows[0][SHEET_HEADERS.index("Tieu de")] == "First"
-
-    service.upsert_library_row(
-        {"ID": "42", "Library Group": "animation", "Tieu de": "Updated"}
-    )
-    assert len(mirror_sheet.data_rows) == 1
-    assert mirror_sheet.data_rows[0][SHEET_HEADERS.index("Tieu de")] == "Updated"
-    assert any(
-        call[0] == f"A2:{rowcol_to_a1(2, len(SHEET_HEADERS))}"
-        for call in mirror_sheet.update_calls
-    )
-
-
-def test_upsert_library_row_blank_group_routes_to_utils_mirror():
-    service, _, spreadsheet = _make_service()
-
-    service.upsert_library_row({"ID": "77", "Library Group": "   ", "Tieu de": "Utility"})
-
-    assert spreadsheet.add_calls == [("LIB_utils", 1000, len(SHEET_HEADERS))]
-    mirror_sheet = spreadsheet._worksheets["LIB_utils"]
-    assert len(mirror_sheet.data_rows) == 1
-    assert mirror_sheet.data_rows[0][0] == "77"
-    assert mirror_sheet.data_rows[0][SHEET_HEADERS.index("Library Group")] == "utils"
-
-
-def test_remove_library_row_deletes_row_by_id():
-    service, _, _ = _make_service()
-    service.upsert_library_row({"ID": "1", "Library Group": "icons"})
-    service.upsert_library_row({"ID": "2", "Library Group": "icons"})
-    mirror_sheet = service.ensure_library_sheet("icons")
-
-    service.remove_library_row("2", "icons")
-
-    assert [row[0] for row in mirror_sheet.data_rows] == ["1"]
-
-
-def test_remove_library_row_does_not_create_mirror_sheet_when_missing():
-    service, _, spreadsheet = _make_service()
-
-    service.remove_library_row("2", "icons")
-
-    assert spreadsheet.add_calls == []
-    assert "LIB_icons" not in spreadsheet._worksheets
-
-
-def test_backfill_library_groups_updates_only_missing_entries():
-    service, main_sheet, _ = _make_service()
-    service.get_all_records = lambda: [
-        {
-            "ID": "1",
-            "Link goc": "https://motion.dev/docs",
-            "Tieu de": "Motion Docs",
-            "Tom tat AI": "",
-            "Library Group": "",
-        },
-        {
-            "ID": "2",
-            "Link goc": "https://lucide.dev",
-            "Tieu de": "Lucide",
-            "Tom tat AI": "",
-            "Library Group": "icons",
-        },
-        {
-            "ID": "3",
-            "Link goc": "https://example.com",
-            "Tieu de": "Misc",
-            "Tom tat AI": "",
-            "Library Group": "   ",
-        },
-    ]
-
-    detect_calls = []
-
-    def _detect(url: str, title: str, summary: str):
-        detect_calls.append((url, title, summary))
-        if "motion.dev" in url:
-            return "animation"
-        return None
-
-    service.backfill_library_groups(_detect)
-
-    group_col = SHEET_HEADERS.index("Library Group") + 1
-    assert main_sheet.updated_cells == [
-        (2, group_col, "animation"),
-        (4, group_col, "utils"),
-    ]
-    assert detect_calls == [
-        ("https://motion.dev/docs", "Motion Docs", ""),
-        ("https://example.com", "Misc", ""),
-    ]
+    dashboard = service.spreadsheet.worksheet("DASHBOARD")
+    assert dashboard.update_calls
+    values = dashboard.update_calls[-1][1]
+    assert values[1][0] == "Tổng links"
+    assert values[1][1] == 3
+    assert values[2] == ["Tổng chủ đề", 2]
+    assert values[5] == ["Chủ đề", "Sheet", "Tổng links", "Mới hôm nay", "Mới 7 ngày", "Top 5 từ khóa", "URL"]
+    assert values[6][0] == "AI Agent"
+    assert values[6][2] == 2
+    assert "plan(2)" in values[6][5]
+    assert "#gid=" in values[6][6]

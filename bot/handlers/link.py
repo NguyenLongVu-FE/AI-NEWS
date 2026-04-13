@@ -1,29 +1,28 @@
-import logging
 import re
-from typing import Optional, Union
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import MessageHandler, filters, ContextTypes
+from telegram.ext import ContextTypes, MessageHandler, filters
 
-from bot.services.parser import parse_link_input
-from bot.services.library_groups import detect_library_group, normalize_library_group
-from bot.services.category import detect_category, normalize_category_name
-from bot.services.scraper import ScraperService
+from bot.services.category import detect_category
+from bot.services.editing import apply_record_edit
 from bot.services.gemini import GeminiService
-from bot.services.sheets import get_sheets_service
-from bot.services.settings import SettingsService
 from bot.services.i18n import t
+from bot.services.keywords import detect_keywords
+from bot.services.parser import parse_link_input
+from bot.services.scraper import ScraperService
+from bot.services.settings import SettingsService
+from bot.services.sheets import get_sheets_service
 from bot.utils.formatting import (
-    format_save_success,
-    format_processing,
     format_error,
+    format_processing,
+    format_save_success,
+    format_view_detail,
 )
-from bot.utils.validation import validate_url, sanitize_html, validate_tags
+from bot.utils.validation import sanitize_html, validate_tags, validate_url
 
 scraper = ScraperService()
 gemini = GeminiService()
 settings_service = SettingsService()
-logger = logging.getLogger(__name__)
 
 URL_REGEX = re.compile(r"https?://\S+")
 
@@ -33,37 +32,107 @@ def _get_lang(update: Update) -> str:
     return settings_service.get_user_settings(user_id)["language"]
 
 
-def _get_row_by_logical_id(sheets, row_id: int):
-    if hasattr(sheets, "get_row_by_id"):
-        return sheets.get_row_by_id(row_id)
-    return sheets.get_row(row_id)
+async def _handle_existing_link(update: Update, sheets, parsed: dict, existing_id: str, lang: str):
+    record = sheets.get_row_by_id(existing_id) or {}
+    merged_notes = False
+    merged_keywords = False
+
+    if parsed["notes"]:
+        merged_notes = sheets.append_note_by_id(existing_id, parsed["notes"])
+    if parsed["tags"]:
+        merged_keywords = sheets.merge_keywords_by_id(existing_id, parsed["tags"])
+
+    updated_record = sheets.get_row_by_id(existing_id) or record
+    notices = []
+    if merged_notes:
+        notices.append(f"📝 <b>{t('notes_merged', lang)}</b>")
+    if merged_keywords:
+        notices.append(f"🏷 <b>{t('keywords_merged', lang)}</b>")
+
+    notice_text = f"\n{'\n'.join(notices)}" if notices else ""
+    await update.message.reply_text(
+        f"🔁 <b>{t('link_exists', lang)}</b>\n\n"
+        f"📄 <b>{t('link_title', lang)}</b> {updated_record.get('Tieu de', 'N/A')}\n"
+        f"👤 <b>{t('link_saved_by', lang)}</b> {updated_record.get('Nguoi luu', 'N/A')}"
+        f"{notice_text}",
+        parse_mode="HTML",
+    )
 
 
-def _upsert_library_mirror(
-    sheets, row_id: Union[int, str], record: Optional[dict]
+def _detail_keyboard(row_id: int, lang: str) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    t("edit_button", lang), callback_data=f"a:edit:{row_id}"
+                ),
+                InlineKeyboardButton(
+                    t("delete_button", lang), callback_data=f"a:del:{row_id}"
+                ),
+            ],
+        ]
+    )
+
+
+async def _consume_pending_edit_input(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, sheets, lang: str
 ) -> bool:
-    if not record:
-        logger.warning(
-            "Mirror sync skipped for row_id=%s: record not found after update", row_id
-        )
+    pending_edit = context.user_data.get("pending_edit")
+    if not isinstance(pending_edit, dict):
         return False
+
+    row_id = pending_edit.get("row_id")
+    field = pending_edit.get("field", "")
     try:
-        sheets.upsert_library_row(record)
-    except Exception:
-        logger.warning("Mirror upsert failed for row_id=%s", row_id, exc_info=True)
+        logical_id = int(row_id)
+    except (TypeError, ValueError):
+        context.user_data.pop("pending_edit", None)
         return False
+
+    value = (update.message.text or "").strip()
+    result = apply_record_edit(
+        sheets,
+        row_id=logical_id,
+        field=field,
+        value=value,
+        lang=lang,
+    )
+    if not result["ok"]:
+        if result.get("clear_pending"):
+            context.user_data.pop("pending_edit", None)
+        await update.message.reply_text(
+            format_error(result["error"], lang=lang),
+            parse_mode="HTML",
+        )
+        return True
+
+    context.user_data.pop("pending_edit", None)
+    updated_record = result.get("record") or sheets.get_row_by_id(logical_id)
+    await update.message.reply_text(
+        f"✅ <b>{t('edit_updated', lang)}</b>\n\n"
+        f"✏️ {result['field']}: → {result['value']}",
+        parse_mode="HTML",
+    )
+    if updated_record:
+        await update.message.reply_text(
+            format_view_detail(updated_record, lang=lang),
+            parse_mode="HTML",
+            reply_markup=_detail_keyboard(logical_id, lang),
+        )
     return True
 
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
+    sheets = get_sheets_service()
+    lang = _get_lang(update)
+    if await _consume_pending_edit_input(update, context, sheets, lang):
+        return
     if not URL_REGEX.search(text):
         return
 
-    sheets = get_sheets_service()
     user = update.message.from_user
     user_name = user.first_name or str(user.id)
-    lang = _get_lang(update)
 
     parsed = parse_link_input(text)
     url = parsed["url"]
@@ -86,31 +155,13 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    tags_valid, tags_msg = validate_tags(parsed["tags"])
+    tags_valid, _ = validate_tags(parsed["tags"])
     if not tags_valid:
         parsed["tags"] = parsed["tags"][:10]
 
-    existing_row = sheets.find_by_url(url)
-    if existing_row:
-        record = sheets.get_row(existing_row) or {}
-        mirror_warning = ""
-        if parsed["notes"]:
-            sheets.append_note(existing_row, parsed["notes"])
-            record_id = str(record.get("ID", "")).strip()
-            mirror_row_id = record_id or existing_row
-            updated_record = _get_row_by_logical_id(sheets, mirror_row_id)
-            if updated_record is None:
-                updated_record = sheets.get_row(existing_row)
-            if not _upsert_library_mirror(sheets, mirror_row_id, updated_record):
-                mirror_warning = f"\n⚠️ {t('mirror_sync_warning', lang)}"
-        note_msg = f"📝 <b>{t('notes_merged', lang)}</b>" if parsed["notes"] else ""
-        await update.message.reply_text(
-            f"🔁 <b>{t('link_exists', lang)}</b>\n\n"
-            f"📄 <b>{t('link_title', lang)}</b> {record.get('Tieu de', 'N/A')}\n"
-            f"👤 <b>{t('link_saved_by', lang)}</b> {record.get('Nguoi luu', 'N/A')}\n"
-            f"{note_msg}{mirror_warning}",
-            parse_mode="HTML",
-        )
+    existing_id = sheets.find_by_url(url)
+    if existing_id:
+        await _handle_existing_link(update, sheets, parsed, existing_id, lang)
         return
 
     processing_msg = await update.message.reply_text(
@@ -129,10 +180,6 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif not ai_summary:
         ai_summary = t("no_summary", lang)
 
-    library_group = normalize_library_group(parsed.get("library_group_override"))
-    if not library_group:
-        library_group = detect_library_group(url, title, ai_summary)
-
     detected_category = detect_category(
         url=url,
         title=title,
@@ -140,7 +187,14 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         summary=ai_summary,
         tags=parsed.get("tags", []),
     )
-    final_category = normalize_category_name(parsed.get("category")) or detected_category
+    final_category = parsed.get("category") or detected_category
+    final_keywords = detect_keywords(
+        url=url,
+        title=title,
+        summary=ai_summary,
+        topic=final_category,
+        manual_keywords=parsed.get("tags", []),
+    )
 
     row_id = sheets.append_link(
         url=url,
@@ -149,12 +203,9 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ai_summary=ai_summary,
         notes=parsed["notes"],
         category=final_category,
-        tags=", ".join(parsed["tags"]),
-        priority=parsed["priority"],
-        status="chua_doc",
+        tags=final_keywords,
         user_name=user_name,
         thumbnail=thumbnail,
-        library_group=library_group,
     )
 
     keyboard = InlineKeyboardMarkup(
@@ -176,7 +227,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     success_text = format_save_success(
-        title, source, final_category, parsed["priority"], ai_summary, row_id, lang=lang
+        title, source, final_category, ai_summary, row_id, lang=lang
     )
 
     try:
@@ -188,25 +239,13 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
             success_text, parse_mode="HTML", reply_markup=keyboard
         )
 
-    saved_record = _get_row_by_logical_id(sheets, row_id)
-    if not _upsert_library_mirror(sheets, row_id, saved_record):
-        try:
-            await update.message.reply_text(
-                f"⚠️ {t('mirror_sync_warning', lang)}", parse_mode="HTML"
-            )
-        except Exception:
-            pass
-
     if not metadata["success"]:
-        try:
-            await update.message.reply_text(
-                f"⚠️ <b>{t('save_warning', lang)}</b>\n\n"
-                f"❌ {t('save_warning_desc', lang)} {metadata['error']}\n\n"
-                f"{t('save_warning_hint', lang, id=row_id)}",
-                parse_mode="HTML",
-            )
-        except Exception:
-            pass
+        await update.message.reply_text(
+            f"⚠️ <b>{t('save_warning', lang)}</b>\n\n"
+            f"❌ {t('save_warning_desc', lang)} {metadata['error']}\n\n"
+            f"{t('save_warning_hint', lang, id=row_id)}",
+            parse_mode="HTML",
+        )
 
 
 link_handler = MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link)

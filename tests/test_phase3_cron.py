@@ -1,11 +1,6 @@
 import api.cron as cron_module
 
 
-class _DummyReminderService:
-    def get_all_digests(self):
-        return [{"user_id": "1001", "message": "digest message"}]
-
-
 class _DummyExportService:
     def generate_xlsx(self):
         return b"xlsx-bytes"
@@ -38,7 +33,6 @@ class _RecordingAsyncClient:
 
 def test_cron_digest_returns_contract(monkeypatch, cron_client):
     recorder = _RecordingAsyncClient()
-    monkeypatch.setattr(cron_module, "ReminderService", _DummyReminderService)
     monkeypatch.setattr(cron_module, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(cron_module.httpx, "AsyncClient", lambda: recorder)
 
@@ -46,14 +40,18 @@ def test_cron_digest_returns_contract(monkeypatch, cron_client):
     payload = response.json()
 
     assert response.status_code == 200
-    assert payload == {"sent": 1, "failed": 0, "total_users": 1}
-    assert recorder.requests
-    assert recorder.requests[0][0].endswith("/sendMessage")
+    assert payload == {
+        "enabled": False,
+        "reason": "digest_disabled_in_topic_model",
+        "sent": 0,
+        "failed": 0,
+        "total_users": 0,
+    }
+    assert recorder.requests == []
 
 
 def test_cron_digest_alias_matches_canonical(monkeypatch, cron_client):
     recorder = _RecordingAsyncClient()
-    monkeypatch.setattr(cron_module, "ReminderService", _DummyReminderService)
     monkeypatch.setattr(cron_module, "TELEGRAM_BOT_TOKEN", "token")
     monkeypatch.setattr(cron_module.httpx, "AsyncClient", lambda: recorder)
 

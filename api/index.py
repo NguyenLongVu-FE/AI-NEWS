@@ -8,7 +8,6 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import httpx
 from fastapi import FastAPI, Request
-from starlette.concurrency import run_in_threadpool
 from telegram import Update
 from telegram.ext import Application
 
@@ -16,10 +15,7 @@ from bot.config import (
     TELEGRAM_BOT_TOKEN,
     TELEGRAM_WEBHOOK_SECRET,
     ADMIN_TELEGRAM_ID,
-    ENABLE_STARTUP_BACKFILL,
 )
-from bot.services.library_groups import detect_library_group
-from bot.services.sheets import get_sheets_service
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -32,14 +28,11 @@ from bot.handlers.search import (
     search_handler,
     filter_handler,
     tags_handler,
-    unread_handler,
     today_handler,
     week_handler,
 )
 from bot.handlers.manage import (
-    status_handler,
     note_handler,
-    priority_handler,
     delete_handler,
     edit_handler,
     view_handler,
@@ -50,8 +43,7 @@ from bot.handlers.callback import callback_handler
 from bot.handlers.lang import lang_handler
 from bot.handlers.export import export_handler
 from bot.handlers.stats import stats_handler
-from bot.handlers.remind import remind_handler
-from bot.handlers.lib import lib_handler
+from bot.handlers.topics import topics_handler
 from api.cron import router as cron_router
 
 application.add_handler(start_handler)
@@ -60,12 +52,9 @@ application.add_handler(link_handler)
 application.add_handler(search_handler)
 application.add_handler(filter_handler)
 application.add_handler(tags_handler)
-application.add_handler(unread_handler)
 application.add_handler(today_handler)
 application.add_handler(week_handler)
-application.add_handler(status_handler)
 application.add_handler(note_handler)
-application.add_handler(priority_handler)
 application.add_handler(delete_handler)
 application.add_handler(edit_handler)
 application.add_handler(view_handler)
@@ -75,8 +64,7 @@ application.add_handler(callback_handler)
 application.add_handler(lang_handler)
 application.add_handler(export_handler)
 application.add_handler(stats_handler)
-application.add_handler(remind_handler)
-application.add_handler(lib_handler)
+application.add_handler(topics_handler)
 
 app.include_router(cron_router)
 
@@ -84,22 +72,6 @@ _initialized = False
 _error_timestamps = deque(maxlen=100)
 ERROR_ALERT_THRESHOLD = 5
 ERROR_ALERT_WINDOW = 600
-
-
-def _backfill_missing_library_groups():
-    sheets = get_sheets_service()
-    sheets.backfill_library_groups(detect_library_group)
-
-
-async def startup_backfill_library_groups():
-    try:
-        await run_in_threadpool(_backfill_missing_library_groups)
-    except Exception:
-        logger.warning("Startup library group backfill failed", exc_info=True)
-
-
-if ENABLE_STARTUP_BACKFILL:
-    app.add_event_handler("startup", startup_backfill_library_groups)
 
 
 async def _send_admin_alert(error_msg: str):

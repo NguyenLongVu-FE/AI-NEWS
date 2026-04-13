@@ -23,6 +23,7 @@ def get_google_credentials():
 
 CATEGORIES = [
     "Tech",
+    "AI Agent",
     "FE",
     "UIUX",
     "Design",
@@ -33,18 +34,7 @@ CATEGORIES = [
     "Entertainment",
 ]
 
-STATUS_VALUES = ["chua_doc", "dang_doc", "da_nghien_cuu", "da_ap_dung"]
-PRIORITY_VALUES = ["high", "medium", "low"]
-LIBRARY_GROUPS = [
-    "animation",
-    "shadcn",
-    "icons",
-    "charts",
-    "forms",
-    "table",
-    "state-management",
-    "utils",
-]
+TOPIC_SHEET_PREFIX = "TOPIC_"
 
 SHEET_HEADERS = [
     "ID",
@@ -56,12 +46,8 @@ SHEET_HEADERS = [
     "Ghi chu tay",
     "Chu de",
     "Tags",
-    "Uu tien",
-    "Trang thai",
     "Nguoi luu",
     "Thumbnail",
-    "Library Group",
-    "Nhac nho",
 ]
 
 SHEET_DISPLAY_HEADERS = [
@@ -73,11 +59,7 @@ SHEET_DISPLAY_HEADERS = [
     "Tóm tắt AI",
     "Ghi chú tay",
     "Chủ đề",
-    "Tags",
-    "Ưu tiên",
-    "Trạng thái",
+    "Từ khóa",
     "Người lưu",
     "Thumbnail",
-    "Library Group",
-    "Nhắc nhở",
 ]

@@ -27,6 +27,17 @@ DOMAIN_RULES = {
 }
 
 CATEGORY_KEYWORDS = {
+    "AI Agent": (
+        "ai agent",
+        "agentic",
+        "multi-agent",
+        "tool calling",
+        "langgraph",
+        "crewai",
+        "autogen",
+        "skill plan",
+        "plan-and-execute",
+    ),
     "UIUX": (
         "uiux",
         "ui/ux",
@@ -140,6 +151,7 @@ CATEGORY_KEYWORDS = {
 }
 
 CATEGORY_PRIORITY = [
+    "AI Agent",
     "FE",
     "UIUX",
     "Design",
@@ -154,6 +166,8 @@ CATEGORY_PRIORITY = [
 _CATEGORY_ALIASES = {
     "tech": "Tech",
     "technology": "Tech",
+    "aiagent": "AI Agent",
+    "agent": "AI Agent",
     "fe": "FE",
     "frontend": "FE",
     "frontenddev": "FE",

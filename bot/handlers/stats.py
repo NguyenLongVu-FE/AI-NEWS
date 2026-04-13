@@ -19,8 +19,7 @@ async def stats_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = f"📊 <b>{t('stats_title', lang)} — {period_label}</b>\n\n"
 
     text += f"📋 {t('stats_total', lang)}: {stats['total']}\n"
-    text += f"✅ {t('stats_read', lang)}: {stats['read']}\n"
-    text += f"📭 {t('stats_unread', lang)}: {stats['unread']}\n\n"
+    text += "\n"
 
     if stats["contributors"]:
         text += f"👥 <b>{t('stats_contributors', lang)}</b>\n"

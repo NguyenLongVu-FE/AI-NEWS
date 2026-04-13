@@ -71,7 +71,26 @@ Cron schedule in `vercel.json`:
 - daily digest: `/api/cron/digest`
 - weekly backup (Monday 09:00 ICT): `/api/cron/backup`
 
-## 7. Rollback Procedure
+Digest endpoint is intentionally disabled in topic-first mode and returns:
+`{"enabled": false, "reason": "digest_disabled_in_topic_model", ...}`
+
+## 7. Topic Sheet Operations
+
+Command family:
+- `/topics`
+- `/filter @topic #keyword`
+
+Behavior:
+- Main data is stored in topic sheets only.
+- Sheets follow fixed naming format: `TOPIC_<slug>`.
+- Each record belongs to exactly one topic sheet.
+- ID is global across all topic sheets.
+- `DASHBOARD` sheet is rebuilt automatically after add/edit/delete operations and summarizes topic health.
+
+Recovery:
+- If commands return not-found for a known ID, inspect sheet data and verify ID uniqueness.
+
+## 8. Rollback Procedure
 
 If production breaks:
 

@@ -116,6 +116,17 @@
 | `/stats` | Thống kê tháng này |
 | `/stats week` | Thống kê tuần này |
 
+### Lệnh thư viện UI (Task 6)
+| Command | Mô tả |
+|---|---|
+| `/lib` | Hiển thị danh sách nhóm thư viện và số lượng theo từng nhóm |
+| `/lib <group>` | Lọc nhanh dữ liệu theo nhóm thư viện trong chat |
+| `/lib sheet <group>` | Tạo/cập nhật mirror sheet theo nhóm và chạy backfill từ main sheet |
+
+- Mirror sheets đặt tên cố định: `LIB_animation`, `LIB_shadcn`, `LIB_icons`, `LIB_charts`, `LIB_forms`, `LIB_table`, `LIB_state-management`, `LIB_utils`.
+- Main sheet là source of truth; các `LIB_<group>` là mirror sheets theo nhóm.
+- Nếu mirror sync bị drift/fail, chạy `/lib sheet <group>` để re-backfill từ source.
+
 ---
 
 ## 5. Giao diện Song ngữ (Phase 2)

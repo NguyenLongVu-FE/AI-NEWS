@@ -19,14 +19,11 @@ def _install_handler_stubs():
             "search_handler",
             "filter_handler",
             "tags_handler",
-            "unread_handler",
             "today_handler",
             "week_handler",
         ],
         "bot.handlers.manage": [
-            "status_handler",
             "note_handler",
-            "priority_handler",
             "delete_handler",
             "edit_handler",
             "view_handler",
@@ -36,9 +33,8 @@ def _install_handler_stubs():
         "bot.handlers.callback": ["callback_handler"],
         "bot.handlers.lang": ["lang_handler"],
         "bot.handlers.export": ["export_handler"],
-        "bot.handlers.lib": ["lib_handler"],
+        "bot.handlers.topics": ["topics_handler"],
         "bot.handlers.stats": ["stats_handler"],
-        "bot.handlers.remind": ["remind_handler"],
     }
     for module_name, exports in module_exports.items():
         module = types.ModuleType(module_name)

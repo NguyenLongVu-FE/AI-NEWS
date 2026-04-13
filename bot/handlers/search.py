@@ -37,17 +37,17 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def filter_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     lang = _get_lang(update)
     category = ""
-    priority = ""
+    keyword = ""
     for arg in context.args or []:
         if arg.startswith("@"):
             category = arg[1:]
-        elif arg.startswith("!"):
-            priority = arg[1:].lower()
+        elif arg.startswith("#"):
+            keyword = arg[1:]
     sheets = get_sheets_service()
-    results = sheets.filter_by(category=category or None, priority=priority or None)
+    results = sheets.filter_by(category=category or None, keyword=keyword or None)
     label = (
         f"{t('filter_label', lang)}: {f'@{category}' if category else ''} "
-        f"{f'!{priority}' if priority else ''}"
+        f"{f'#{keyword}' if keyword else ''}"
     ).strip()
     await _send_results(update, results, label, lang)
 
@@ -75,13 +75,6 @@ async def tags_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"▸ <code>{tg}</code>" for tg in tag_list
     )
     await update.message.reply_text(text, parse_mode="HTML")
-
-
-async def unread(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    lang = _get_lang(update)
-    sheets = get_sheets_service()
-    results = sheets.filter_by(status="chua_doc")
-    await _send_results(update, results, t("status_chua_doc", lang), lang)
 
 
 async def today(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -121,11 +114,13 @@ async def _send_results(update: Update, results, label: str, lang: str):
         title = r.get("Tieu de", "N/A")
         source = r.get("Nguon", "N/A")
         cat = r.get("Chu de", "N/A")
+        keywords = r.get("Tags", "")
         summary = r.get("Tom tat AI", "")[:100]
         rid = r.get("ID", "")
         text += (
             f"<b>{i}.</b> {title}\n"
             f"🔗 {source} | 🏷 {cat}\n"
+            f"🔖 {keywords}\n"
             f"<blockquote>{summary}</blockquote>\n\n"
         )
     buttons = [
@@ -154,6 +149,5 @@ async def _send_results(update: Update, results, label: str, lang: str):
 search_handler = CommandHandler("search", search)
 filter_handler = CommandHandler("filter", filter_cmd)
 tags_handler = CommandHandler("tags", tags_cmd)
-unread_handler = CommandHandler("unread", unread)
 today_handler = CommandHandler("today", today)
 week_handler = CommandHandler("week", week)

@@ -1,7 +1,16 @@
 from urllib.parse import urlparse
 from typing import Optional
 
-from bot.config import LIBRARY_GROUPS
+LIBRARY_GROUPS = [
+    "animation",
+    "shadcn",
+    "icons",
+    "charts",
+    "forms",
+    "table",
+    "state-management",
+    "utils",
+]
 
 DOMAIN_RULES = {
     "motion.dev": "animation",
