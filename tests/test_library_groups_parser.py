@@ -34,3 +34,31 @@ def test_detect_keywords_for_ai_agent_includes_skill_plan():
     assert "skill" in keywords
     assert "plan" in keywords
     assert "custom" in keywords
+
+
+def test_detect_keywords_extracts_technical_terms_from_summary():
+    keywords = detect_keywords(
+        url="https://example.com/post",
+        title="Workflow guide",
+        summary="Huong dan xay dung AI agent workflow voi LangGraph va prompt template.",
+        topic="AI Agent",
+        manual_keywords=[],
+    )
+
+    assert "langgraph" in keywords
+    assert "prompt-template" in keywords
+    assert "agent-workflow" in keywords
+
+
+def test_detect_keywords_summary_merge_deduplicates_with_manual_input():
+    keywords = detect_keywords(
+        url="https://example.com/automation",
+        title="Automation",
+        summary="AI agent plan va skill planning",
+        topic="AI Agent",
+        manual_keywords=["plan", "skill", "custom"],
+    )
+
+    assert keywords.count("plan") == 1
+    assert keywords.count("skill") == 1
+    assert "custom" in keywords

@@ -1,8 +1,101 @@
 import re
+import unicodedata
+from collections import Counter
 from typing import Iterable, Optional
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_WORD_RE = re.compile(r"[a-z0-9]+")
+_TECH_TOKEN_RE = re.compile(r"\b[a-zA-Z][a-zA-Z0-9]*(?:[.+#-][a-zA-Z0-9]+)+\b")
+_MAX_KEYWORDS = 15
+
+_STOPWORDS = {
+    "a",
+    "an",
+    "and",
+    "are",
+    "as",
+    "at",
+    "be",
+    "by",
+    "for",
+    "from",
+    "in",
+    "is",
+    "it",
+    "of",
+    "on",
+    "or",
+    "that",
+    "the",
+    "this",
+    "to",
+    "with",
+    "va",
+    "la",
+    "cho",
+    "trong",
+    "mot",
+    "nhung",
+    "cac",
+    "duoc",
+    "khi",
+    "de",
+    "ve",
+    "tren",
+    "tu",
+    "day",
+    "ban",
+    "cua",
+    "nhung",
+    "dang",
+    "co",
+    "se",
+    "giup",
+    "theo",
+    "vao",
+    "nhu",
+    "toi",
+    "tao",
+    "cach",
+    "huong",
+    "dan",
+    "xay",
+    "dung",
+    "voi",
+    "guide",
+}
+
+_SUMMARY_HINT_TERMS = {
+    "ai",
+    "agent",
+    "agentic",
+    "skill",
+    "plan",
+    "planning",
+    "workflow",
+    "prompt",
+    "template",
+    "model",
+    "llm",
+    "rag",
+    "tool",
+    "tools",
+    "calling",
+    "automation",
+    "orchestrator",
+    "orchestration",
+    "langgraph",
+    "crewai",
+    "autogen",
+    "telegram",
+    "webhook",
+    "api",
+    "dashboard",
+    "keyword",
+    "filter",
+    "summary",
+}
 
 GLOBAL_KEYWORD_RULES = {
     "shadcn": "shadcn",
@@ -29,7 +122,12 @@ TOPIC_KEYWORD_RULES = {
 
 
 def normalize_keyword(value: str) -> str:
-    return _SLUG_RE.sub("-", str(value or "").strip().lower()).strip("-")
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    normalized = unicodedata.normalize("NFKD", raw)
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return _SLUG_RE.sub("-", ascii_text).strip("-")
 
 
 def normalize_keywords(values: Iterable[str]) -> list[str]:
@@ -42,6 +140,54 @@ def normalize_keywords(values: Iterable[str]) -> list[str]:
         seen.add(token)
         ordered.append(token)
     return ordered
+
+
+def _extract_summary_keywords(summary: str) -> list[str]:
+    raw_summary = str(summary or "").strip()
+    if not raw_summary:
+        return []
+
+    detected: list[str] = []
+
+    for token in _TECH_TOKEN_RE.findall(raw_summary):
+        normalized = normalize_keyword(token)
+        if normalized:
+            detected.append(normalized)
+
+    normalized_summary = unicodedata.normalize("NFKD", raw_summary.lower())
+    ascii_summary = "".join(ch for ch in normalized_summary if not unicodedata.combining(ch))
+    words: list[str] = []
+    for word in _WORD_RE.findall(ascii_summary):
+        if word in _STOPWORDS or word.isdigit():
+            continue
+        if len(word) < 3 and word not in _SUMMARY_HINT_TERMS:
+            continue
+        words.append(word)
+
+    if not words:
+        return normalize_keywords(detected)[:_MAX_KEYWORDS]
+
+    counts = Counter(words)
+    frequent_words = [
+        word
+        for word, count in counts.most_common(30)
+        if count >= 2 or word in _SUMMARY_HINT_TERMS
+    ]
+
+    bigrams: list[str] = []
+    for idx in range(len(words) - 1):
+        left = words[idx]
+        right = words[idx + 1]
+        if left in _STOPWORDS or right in _STOPWORDS:
+            continue
+        if left in _SUMMARY_HINT_TERMS or right in _SUMMARY_HINT_TERMS:
+            phrase = normalize_keyword(f"{left} {right}")
+            if phrase:
+                bigrams.append(phrase)
+
+    detected.extend(bigrams[:6])
+    detected.extend(frequent_words[:10])
+    return normalize_keywords(detected)[:_MAX_KEYWORDS]
 
 
 def detect_keywords(
@@ -63,10 +209,12 @@ def detect_keywords(
         if needle in content:
             detected.append(keyword)
 
+    detected.extend(_extract_summary_keywords(summary))
+
     if topic_slug == "ai-agent":
         detected.append("ai-agent")
 
     if manual_keywords:
         detected.extend(str(keyword) for keyword in manual_keywords)
 
-    return normalize_keywords(detected)
+    return normalize_keywords(detected)[:_MAX_KEYWORDS]
