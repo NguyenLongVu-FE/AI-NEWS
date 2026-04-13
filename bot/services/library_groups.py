@@ -1,4 +1,5 @@
 from urllib.parse import urlparse
+from typing import Optional
 
 from bot.config import LIBRARY_GROUPS
 
@@ -23,7 +24,7 @@ KEYWORD_RULES = {
 }
 
 
-def normalize_library_group(value: str | None) -> str | None:
+def normalize_library_group(value: Optional[str]) -> Optional[str]:
     if not value:
         return None
     key = value.strip().lower()

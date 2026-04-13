@@ -1,4 +1,5 @@
 import logging
+from typing import Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import CommandHandler, ContextTypes
@@ -53,7 +54,7 @@ def _append_note_by_id(sheets, row_id: int, note: str) -> bool:
 
 
 def _sync_library_mirror(
-    sheets, row_id: int, previous_record: dict | None = None
+    sheets, row_id: int, previous_record: Optional[dict] = None
 ) -> bool:
     updated_record = _get_record_by_id(sheets, row_id)
     if not updated_record:

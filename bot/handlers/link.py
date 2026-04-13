@@ -1,5 +1,6 @@
 import logging
 import re
+from typing import Optional, Union
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import MessageHandler, filters, ContextTypes
@@ -37,7 +38,9 @@ def _get_row_by_logical_id(sheets, row_id: int):
     return sheets.get_row(row_id)
 
 
-def _upsert_library_mirror(sheets, row_id: int | str, record: dict | None) -> bool:
+def _upsert_library_mirror(
+    sheets, row_id: Union[int, str], record: Optional[dict]
+) -> bool:
     if not record:
         logger.warning(
             "Mirror sync skipped for row_id=%s: record not found after update", row_id

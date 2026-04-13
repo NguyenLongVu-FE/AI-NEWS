@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Union
 
 import gspread
 from gspread.utils import ValueInputOption, rowcol_to_a1
@@ -238,7 +239,7 @@ class SheetsService:
         separator = " | " if current else ""
         ws.update_cell(row, 7, f"{current}{separator}{note}")
 
-    def append_note_by_id(self, row_id: int | str, note: str) -> bool:
+    def append_note_by_id(self, row_id: Union[int, str], note: str) -> bool:
         row_number = self.resolve_row_index_by_id(row_id)
         if row_number is None:
             return False
@@ -261,7 +262,7 @@ class SheetsService:
         keys = SHEET_HEADERS
         return dict(zip(keys, values + [""] * (len(keys) - len(values))))
 
-    def resolve_row_index_by_id(self, row_id: int | str):
+    def resolve_row_index_by_id(self, row_id: Union[int, str]):
         row_key = str(row_id or "").strip()
         if not row_key:
             return None
@@ -273,20 +274,20 @@ class SheetsService:
                 return row_number
         return None
 
-    def get_row_by_id(self, row_id: int | str):
+    def get_row_by_id(self, row_id: Union[int, str]):
         row_number = self.resolve_row_index_by_id(row_id)
         if row_number is None:
             return None
         return self.get_row(row_number)
 
-    def update_cell_by_id(self, row_id: int | str, col: int, value: str) -> bool:
+    def update_cell_by_id(self, row_id: Union[int, str], col: int, value: str) -> bool:
         row_number = self.resolve_row_index_by_id(row_id)
         if row_number is None:
             return False
         self.update_cell(row_number, col, value)
         return True
 
-    def delete_row_by_id(self, row_id: int | str) -> bool:
+    def delete_row_by_id(self, row_id: Union[int, str]) -> bool:
         row_number = self.resolve_row_index_by_id(row_id)
         if row_number is None:
             return False
