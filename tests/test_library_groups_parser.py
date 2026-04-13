@@ -30,10 +30,10 @@ def test_detect_keywords_for_ai_agent_includes_skill_plan():
         manual_keywords=["custom"],
     )
 
-    assert "ai-agent" in keywords
     assert "skill" in keywords
     assert "plan" in keywords
     assert "custom" in keywords
+    assert len(keywords) <= 3
 
 
 def test_detect_keywords_extracts_technical_terms_from_summary():
@@ -45,9 +45,10 @@ def test_detect_keywords_extracts_technical_terms_from_summary():
         manual_keywords=[],
     )
 
+    assert "ai-agent" in keywords
     assert "langgraph" in keywords
-    assert "prompt-template" in keywords
-    assert "agent-workflow" in keywords
+    assert "workflow" in keywords
+    assert len(keywords) <= 3
 
 
 def test_detect_keywords_summary_merge_deduplicates_with_manual_input():
@@ -62,6 +63,7 @@ def test_detect_keywords_summary_merge_deduplicates_with_manual_input():
     assert keywords.count("plan") == 1
     assert keywords.count("skill") == 1
     assert "custom" in keywords
+    assert len(keywords) <= 3
 
 
 def test_detect_keywords_always_has_topic_keyword_for_generic_content():
@@ -75,7 +77,7 @@ def test_detect_keywords_always_has_topic_keyword_for_generic_content():
 
     assert "business" in keywords
     assert len(keywords) >= 1
-    assert "doanh" in keywords
+    assert len(keywords) <= 3
 
 
 def test_detect_keywords_ignores_no_summary_placeholder_noise():
@@ -89,3 +91,15 @@ def test_detect_keywords_ignores_no_summary_placeholder_noise():
 
     assert "tech" in keywords
     assert "chua" not in keywords
+
+
+def test_detect_keywords_manual_priority_and_cap_three():
+    keywords = detect_keywords(
+        url="https://example.com/agent-edit-plan",
+        title="Skill plan edit guide",
+        summary="AI agent workflow",
+        topic="AI Agent",
+        manual_keywords=["custom-a", "custom-b", "custom-c", "custom-d"],
+    )
+
+    assert keywords == ["custom-a", "custom-b", "custom-c"]

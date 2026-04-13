@@ -47,11 +47,20 @@ CATEGORY_KEYWORDS = {
         "wireframe",
         "prototype",
         "interaction design",
+        "user flow",
+        "design system",
+        "accessibility",
+        "information architecture",
+        "persona",
+        "journey map",
+        "figma",
     ),
     "FE": (
         "frontend",
         "front-end",
         "front end",
+        "web app",
+        "webapp",
         "react",
         "next.js",
         "nextjs",
@@ -62,7 +71,6 @@ CATEGORY_KEYWORDS = {
         "html",
         "javascript",
         "typescript",
-        "component",
         "shadcn",
         "storybook",
     ),
@@ -152,8 +160,8 @@ CATEGORY_KEYWORDS = {
 
 CATEGORY_PRIORITY = [
     "AI Agent",
-    "FE",
     "UIUX",
+    "FE",
     "Design",
     "Marketing",
     "Business",
@@ -162,6 +170,41 @@ CATEGORY_PRIORITY = [
     "Entertainment",
     "Tech",
 ]
+
+_STRONG_CATEGORY_KEYWORDS = {
+    "UIUX": {
+        "uiux",
+        "ui/ux",
+        "ux/ui",
+        "user experience",
+        "wireframe",
+        "prototype",
+        "interaction design",
+        "user flow",
+        "design system",
+        "accessibility",
+        "information architecture",
+        "journey map",
+        "figma",
+    },
+    "FE": {
+        "frontend",
+        "front-end",
+        "front end",
+        "react",
+        "next.js",
+        "nextjs",
+        "vue",
+        "angular",
+        "tailwind",
+        "typescript",
+        "javascript",
+        "css",
+        "html",
+        "shadcn",
+        "storybook",
+    },
+}
 
 _CATEGORY_ALIASES = {
     "tech": "Tech",
@@ -185,9 +228,22 @@ _CATEGORY_ALIASES = {
     "other": "",
 }
 
+_MATCH_TEXT_RE = re.compile(r"[^a-z0-9]+")
+
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value).strip().lower())
+
+
+def _normalize_match_text(value: str) -> str:
+    return _MATCH_TEXT_RE.sub(" ", str(value or "").strip().lower()).strip()
+
+
+def _contains_keyword(content: str, keyword: str) -> bool:
+    needle = _normalize_match_text(keyword)
+    if not needle:
+        return False
+    return f" {needle} " in f" {content} "
 
 
 def normalize_category_name(value: Optional[str]) -> str:
@@ -211,6 +267,21 @@ def is_forbidden_other_category(value: Optional[str]) -> bool:
     return _slug(value or "") == "other"
 
 
+def _score_category(content: str, category: str, keywords: Sequence[str]) -> tuple[int, int]:
+    strong_keywords = _STRONG_CATEGORY_KEYWORDS.get(category, set())
+    score = 0
+    strong_hits = 0
+    for keyword in keywords:
+        if not _contains_keyword(content, keyword):
+            continue
+        if keyword in strong_keywords:
+            score += 2
+            strong_hits += 1
+        else:
+            score += 1
+    return score, strong_hits
+
+
 def detect_category(
     url: str,
     title: str = "",
@@ -224,13 +295,20 @@ def detect_category(
             return category
 
     tags_text = " ".join(tag for tag in (tags or []) if tag)
-    content = f"{url} {title} {description} {summary} {tags_text}".lower()
+    content = _normalize_match_text(f"{url} {title} {description} {summary} {tags_text}")
 
     scores = {}
+    strong_hits = {}
     for category, keywords in CATEGORY_KEYWORDS.items():
-        score = sum(1 for keyword in keywords if keyword in content)
+        score, strong_count = _score_category(content, category, keywords)
         if score > 0:
             scores[category] = score
+            strong_hits[category] = strong_count
+
+    fe_score = scores.get("FE", 0)
+    if fe_score and strong_hits.get("FE", 0) == 0:
+        scores.pop("FE", None)
+        strong_hits.pop("FE", None)
 
     if scores:
         best_score = max(scores.values())

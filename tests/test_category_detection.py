@@ -35,6 +35,24 @@ def test_detect_category_by_frontend_keywords():
     assert category == "FE"
 
 
+def test_detect_category_does_not_force_fe_from_generic_web_term():
+    category = detect_category(
+        "https://example.com/web-overview",
+        title="Tong quan web cho team san pham",
+        summary="Noi dung tong hop web o muc khai niem, khong co cong nghe FE cu the.",
+    )
+    assert category == "Tech"
+
+
+def test_detect_category_uiux_from_summary_signals():
+    category = detect_category(
+        "https://example.com/app-redesign",
+        title="Cai thien trai nghiem nguoi dung",
+        summary="Phan tich user flow, wireframe, prototype va usability cho app.",
+    )
+    assert category == "UIUX"
+
+
 def test_detect_category_fallback_never_returns_other():
     category = detect_category("https://example.com/unknown", "General note")
     assert category == "Tech"
