@@ -3,7 +3,7 @@ from html import escape
 from telegram import Update
 from telegram.ext import CommandHandler, ContextTypes
 
-from bot.config import LIBRARY_GROUPS, SHEET_HEADERS
+from bot.config import LIBRARY_GROUPS, SHEET_HEADERS, SHEET_DISPLAY_HEADERS
 from bot.services.i18n import t
 from bot.services.library_groups import normalize_library_group
 from bot.services.settings import SettingsService
@@ -158,7 +158,7 @@ async def _ensure_group_sheet(update: Update, lang: str, args: list[str]):
     source_rows = [_record_to_sheet_row(record) for record in source_records]
     mirror_sheet.update(
         range_name="A1",
-        values=[SHEET_HEADERS, *source_rows],
+        values=[SHEET_DISPLAY_HEADERS, *source_rows],
         value_input_option="RAW",
     )
     if len(mirror_records) > len(source_rows):

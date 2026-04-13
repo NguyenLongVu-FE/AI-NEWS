@@ -63,3 +63,21 @@ SHEET_HEADERS = [
     "Library Group",
     "Nhac nho",
 ]
+
+SHEET_DISPLAY_HEADERS = [
+    "ID",
+    "Ngày lưu",
+    "Tiêu đề",
+    "Link gốc",
+    "Nguồn",
+    "Tóm tắt AI",
+    "Ghi chú tay",
+    "Chủ đề",
+    "Tags",
+    "Ưu tiên",
+    "Trạng thái",
+    "Người lưu",
+    "Thumbnail",
+    "Library Group",
+    "Nhắc nhở",
+]

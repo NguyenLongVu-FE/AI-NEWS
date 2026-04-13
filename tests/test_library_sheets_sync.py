@@ -1,7 +1,7 @@
 import gspread
 from gspread.utils import ValueInputOption, rowcol_to_a1
 
-from bot.config import SHEET_HEADERS
+from bot.config import SHEET_HEADERS, SHEET_DISPLAY_HEADERS
 from bot.services.sheets import SheetsService
 
 LEGACY_SHEET_HEADERS = [header for header in SHEET_HEADERS if header != "Library Group"]
@@ -115,7 +115,9 @@ class _FakeSpreadsheet:
 
 
 def _make_service(headers=None, rows=None):
-    main_sheet = _FakeWorksheet("Sheet1", headers=headers or SHEET_HEADERS, rows=rows)
+    main_sheet = _FakeWorksheet(
+        "Sheet1", headers=headers or SHEET_DISPLAY_HEADERS, rows=rows
+    )
     spreadsheet = _FakeSpreadsheet(main_sheet)
     service = SheetsService.__new__(SheetsService)
     service.spreadsheet = spreadsheet
@@ -134,7 +136,7 @@ def test_ensure_headers_uses_range_for_current_header_count():
 
     expected_range = f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
     assert main_sheet.update_calls[0][0] == expected_range
-    assert main_sheet.headers == SHEET_HEADERS
+    assert main_sheet.headers == SHEET_DISPLAY_HEADERS
 
 
 def test_ensure_headers_migrates_legacy_layout_and_preserves_reminder_values():
@@ -163,7 +165,7 @@ def test_ensure_headers_migrates_legacy_layout_and_preserves_reminder_values():
     service._ensure_headers()
 
     migrated_row = main_sheet.data_rows[0]
-    assert main_sheet.headers == SHEET_HEADERS
+    assert main_sheet.headers == SHEET_DISPLAY_HEADERS
     assert migrated_row[SHEET_HEADERS.index("Library Group")] == ""
     assert migrated_row[SHEET_HEADERS.index("Nhac nho")] == "2026-06-01"
 
@@ -206,7 +208,7 @@ def test_ensure_library_sheet_creates_and_reuses_mirror_sheet():
 
     assert created is reused
     assert spreadsheet.add_calls == [("LIB_animation", 1000, len(SHEET_HEADERS))]
-    assert created.headers == SHEET_HEADERS
+    assert created.headers == SHEET_DISPLAY_HEADERS
     assert created.update_calls[0][0] == f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
 
 

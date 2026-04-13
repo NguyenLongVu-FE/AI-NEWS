@@ -1,14 +1,24 @@
 from datetime import datetime
 from typing import Union
+import logging
 
 import gspread
 from gspread.utils import ValueInputOption, rowcol_to_a1
 
-from bot.config import GOOGLE_SHEET_ID, SHEET_HEADERS, get_google_credentials
+from bot.config import (
+    GOOGLE_SHEET_ID,
+    SHEET_HEADERS,
+    SHEET_DISPLAY_HEADERS,
+    get_google_credentials,
+)
 from bot.services.library_groups import normalize_library_group
 
 
 _instance = None
+logger = logging.getLogger(__name__)
+_HEADER_TO_DISPLAY = dict(zip(SHEET_HEADERS, SHEET_DISPLAY_HEADERS))
+_DISPLAY_TO_HEADER = {display: header for header, display in _HEADER_TO_DISPLAY.items()}
+_DISPLAY_TO_HEADER.update({header: header for header in SHEET_HEADERS})
 
 
 def get_sheets_service() -> "SheetsService":
@@ -35,23 +45,37 @@ class SheetsService:
         legacy_headers = [
             header for header in SHEET_HEADERS if header != "Library Group"
         ]
+        legacy_display_headers = [
+            _HEADER_TO_DISPLAY[header] for header in legacy_headers
+        ]
 
-        if current_headers == legacy_headers:
+        if current_headers in (legacy_headers, legacy_display_headers):
             self._migrate_legacy_headers(ws)
+            self._apply_sheet_visuals(ws)
             return
 
-        if current_headers != SHEET_HEADERS:
+        if current_headers not in (SHEET_HEADERS, SHEET_DISPLAY_HEADERS):
             ws.update(
                 range_name=self._sheet_header_range(),
-                values=[SHEET_HEADERS],
+                values=[SHEET_DISPLAY_HEADERS],
+                value_input_option="RAW",
+            )
+        elif current_headers == SHEET_HEADERS:
+            ws.update(
+                range_name=self._sheet_header_range(),
+                values=[SHEET_DISPLAY_HEADERS],
                 value_input_option="RAW",
             )
 
+        self._apply_sheet_visuals(ws)
+
     def _migrate_legacy_headers(self, ws):
-        legacy_records = ws.get_all_records()
+        legacy_records = [
+            self._normalize_record_keys(record) for record in ws.get_all_records()
+        ]
         ws.update(
             range_name=self._sheet_header_range(),
-            values=[SHEET_HEADERS],
+            values=[SHEET_DISPLAY_HEADERS],
             value_input_option="RAW",
         )
 
@@ -66,6 +90,91 @@ class SheetsService:
     @staticmethod
     def _sheet_header_range() -> str:
         return f"A1:{rowcol_to_a1(1, len(SHEET_HEADERS))}"
+
+    @staticmethod
+    def _normalize_record_keys(record: dict) -> dict:
+        normalized = {}
+        for key, value in (record or {}).items():
+            canonical_key = _DISPLAY_TO_HEADER.get(str(key).strip(), "")
+            if canonical_key in SHEET_HEADERS:
+                normalized[canonical_key] = value
+        for header in SHEET_HEADERS:
+            normalized.setdefault(header, "")
+        return normalized
+
+    @staticmethod
+    def _sheet_id(ws):
+        return (getattr(ws, "_properties", {}) or {}).get("sheetId")
+
+    def _apply_sheet_visuals(self, ws):
+        sheet_id = self._sheet_id(ws)
+        if sheet_id is None:
+            return
+
+        requests = [
+            {
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {"frozenRowCount": 1},
+                    },
+                    "fields": "gridProperties.frozenRowCount",
+                }
+            },
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": len(SHEET_HEADERS),
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {
+                                "red": 0.2627,
+                                "green": 0.4470,
+                                "blue": 0.7686,
+                            },
+                            "horizontalAlignment": "CENTER",
+                            "textFormat": {
+                                "foregroundColor": {
+                                    "red": 1.0,
+                                    "green": 1.0,
+                                    "blue": 1.0,
+                                },
+                                "bold": True,
+                            },
+                        }
+                    },
+                    "fields": (
+                        "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)"
+                    ),
+                }
+            },
+            {
+                "setBasicFilter": {
+                    "filter": {
+                        "range": {
+                            "sheetId": sheet_id,
+                            "startRowIndex": 0,
+                            "startColumnIndex": 0,
+                            "endColumnIndex": len(SHEET_HEADERS),
+                        }
+                    }
+                }
+            },
+        ]
+
+        try:
+            self.spreadsheet.batch_update({"requests": requests})
+        except Exception:
+            logger.warning(
+                "Unable to apply sheet visuals for worksheet=%s",
+                getattr(ws, "title", "?"),
+                exc_info=True,
+            )
 
     def _get_worksheet(self):
         return self.spreadsheet.sheet1
@@ -135,6 +244,14 @@ class SheetsService:
     def ensure_library_sheet(self, group: str):
         ws = self._get_library_sheet(group)
         if ws is not None:
+            current_headers = ws.row_values(1)
+            if current_headers != SHEET_DISPLAY_HEADERS:
+                ws.update(
+                    range_name=self._sheet_header_range(),
+                    values=[SHEET_DISPLAY_HEADERS],
+                    value_input_option="RAW",
+                )
+            self._apply_sheet_visuals(ws)
             return ws
 
         name = self._library_sheet_name(group)
@@ -145,9 +262,10 @@ class SheetsService:
         )
         ws.update(
             range_name=self._sheet_header_range(),
-            values=[SHEET_HEADERS],
+            values=[SHEET_DISPLAY_HEADERS],
             value_input_option="RAW",
         )
+        self._apply_sheet_visuals(ws)
         return ws
 
     def _get_library_sheet(self, group: str):
@@ -248,7 +366,7 @@ class SheetsService:
 
     def get_all_records(self):
         ws = self._get_worksheet()
-        return ws.get_all_records()
+        return [self._normalize_record_keys(record) for record in ws.get_all_records()]
 
     def delete_row(self, row: int):
         ws = self._get_worksheet()
