@@ -9,11 +9,11 @@ class GeminiService:
         self.model = genai.GenerativeModel("gemini-2.5-flash")
 
     def summarize(self, title: str, description: str, url: str) -> str:
-        content = f"Tieu de: {title}\nMo ta: {description}\nURL: {url}"
+        content = f"Tiêu đề: {title}\nMô tả: {description}\nURL: {url}"
         prompt = (
-            "Tom tat noi dung sau thanh tieng Viet, ngan gon 3-5 cau. "
-            "Bao gom: chu de chinh, diem hay nhat, ai nen xem/doc.\n"
-            f"Noi dung: {content}"
+            "Tóm tắt nội dung sau bằng tiếng Việt, ngắn gọn 3-5 câu. "
+            "Bao gồm: chủ đề chính, điểm hay nhất, ai nên xem/đọc.\n"
+            f"Nội dung: {content}"
         )
         try:
             response = self.model.generate_content(prompt)

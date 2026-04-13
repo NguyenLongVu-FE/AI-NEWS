@@ -23,13 +23,14 @@ def get_google_credentials():
 
 CATEGORIES = [
     "Tech",
-    "Business",
+    "FE",
+    "UIUX",
     "Design",
     "Marketing",
+    "Business",
     "Health",
     "Education",
     "Entertainment",
-    "Other",
 ]
 
 STATUS_VALUES = ["chua_doc", "dang_doc", "da_nghien_cuu", "da_ap_dung"]

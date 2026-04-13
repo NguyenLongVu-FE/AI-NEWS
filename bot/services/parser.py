@@ -1,6 +1,6 @@
 import re
 
-from bot.config import CATEGORIES
+from bot.services.category import normalize_category_name
 from bot.services.library_groups import normalize_library_group
 
 
@@ -59,15 +59,11 @@ def parse_link_input(text: str) -> dict:
         "url": url,
         "tags": list(set(tags)),
         "priority": priority,
-        "category": category or "Other",
+        "category": category,
         "notes": " ".join(notes),
         "library_group_override": library_group_override,
     }
 
 
 def _match_category(input_cat: str) -> str:
-    input_lower = input_cat.lower()
-    for cat in CATEGORIES:
-        if cat.lower() == input_lower:
-            return cat
-    return input_cat.capitalize()
+    return normalize_category_name(input_cat)

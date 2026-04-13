@@ -7,6 +7,7 @@ from telegram.ext import MessageHandler, filters, ContextTypes
 
 from bot.services.parser import parse_link_input
 from bot.services.library_groups import detect_library_group, normalize_library_group
+from bot.services.category import detect_category, normalize_category_name
 from bot.services.scraper import ScraperService
 from bot.services.gemini import GeminiService
 from bot.services.sheets import get_sheets_service
@@ -132,13 +133,22 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not library_group:
         library_group = detect_library_group(url, title, ai_summary)
 
+    detected_category = detect_category(
+        url=url,
+        title=title,
+        description=metadata.get("description", ""),
+        summary=ai_summary,
+        tags=parsed.get("tags", []),
+    )
+    final_category = normalize_category_name(parsed.get("category")) or detected_category
+
     row_id = sheets.append_link(
         url=url,
         title=title,
         source=source,
         ai_summary=ai_summary,
         notes=parsed["notes"],
-        category=parsed["category"],
+        category=final_category,
         tags=", ".join(parsed["tags"]),
         priority=parsed["priority"],
         status="chua_doc",
@@ -166,7 +176,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
     success_text = format_save_success(
-        title, source, parsed["category"], parsed["priority"], ai_summary, row_id, lang=lang
+        title, source, final_category, parsed["priority"], ai_summary, row_id, lang=lang
     )
 
     try:

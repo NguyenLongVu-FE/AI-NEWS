@@ -16,6 +16,10 @@ from bot.config import (
 from bot.services.sheets import get_sheets_service
 from bot.services.settings import SettingsService
 from bot.services.i18n import t
+from bot.services.category import (
+    normalize_category_name,
+    is_forbidden_other_category,
+)
 from bot.services.library_groups import normalize_library_group
 from bot.utils.formatting import format_view_detail, format_error
 
@@ -338,6 +342,20 @@ async def edit_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         value_to_save = normalized_group
+    elif field == "category":
+        if is_forbidden_other_category(value):
+            await update.message.reply_text(
+                format_error(t("category_other_forbidden", lang), lang=lang),
+                parse_mode="HTML",
+            )
+            return
+        value_to_save = normalize_category_name(value) or value.strip()
+        if not value_to_save:
+            await update.message.reply_text(
+                format_error(t("field_invalid", lang, values=field), lang=lang),
+                parse_mode="HTML",
+            )
+            return
 
     if not _update_cell_by_id(sheets, row_id, col_map[field], value_to_save):
         await update.message.reply_text(
@@ -431,8 +449,15 @@ async def addcategory_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"❌ {t('admin_only', lang)}", parse_mode="HTML"
         )
         return
-    new_cat = context.args[0].capitalize()
-    if new_cat in CATEGORIES:
+    new_cat_raw = " ".join(context.args).strip()
+    if is_forbidden_other_category(new_cat_raw):
+        await update.message.reply_text(
+            format_error(t("category_other_forbidden", lang), lang=lang),
+            parse_mode="HTML",
+        )
+        return
+    new_cat = normalize_category_name(new_cat_raw) or new_cat_raw
+    if any(category.lower() == new_cat.lower() for category in CATEGORIES):
         await update.message.reply_text(
             f"🏷 {new_cat} {t('category_exists', lang)}.",
             parse_mode="HTML",

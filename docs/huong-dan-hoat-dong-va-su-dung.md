@@ -24,6 +24,8 @@ InfoSaver Bot là Telegram bot giúp lưu link (TikTok, YouTube, Facebook, Web, 
    - Scrape title/description/thumbnail từ trang.
    - Tóm tắt AI bằng Gemini 2.5 Flash.
    - Xác định nguồn (TikTok/YouTube/Facebook/Twitter/X/Web).
+   - Tự động phân loại chủ đề theo nội dung link nếu không truyền `@category`.
+   - Không dùng category `Other`; fallback mặc định là `Tech`.
    - Xác định `Library Group` (ưu tiên `~group`, nếu không có thì auto detect).
 6. Bot lưu dữ liệu vào sheet chính (main sheet).
 7. Bot đồng bộ bản ghi sang sheet mirror theo nhóm `LIB_<group>`.
@@ -34,7 +36,7 @@ InfoSaver Bot là Telegram bot giúp lưu link (TikTok, YouTube, Facebook, Web, 
 - Nếu URL đã tồn tại, bot **không tạo dòng mới**.
 - Nếu có ghi chú mới, bot gộp thêm vào cột ghi chú của bản ghi cũ.
 
-### Daily digest và backup`
+### Daily digest và backup
 
 - Cron chạy:
   - `0 1 * * *` → digest hằng ngày (01:00 UTC, ~08:00 ICT).
@@ -82,6 +84,9 @@ Quy ước:
 - `@...` là category
 - `~...` là library group (nếu muốn tự chỉ định)
 - phần còn lại là ghi chú
+
+Category mặc định bot tự phân loại gồm:
+`Tech`, `FE`, `UIUX`, `Design`, `Marketing`, `Business`, `Education`, `Health`, `Entertainment`.
 
 ### 4.2 Danh sách lệnh
 
