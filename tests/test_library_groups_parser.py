@@ -62,3 +62,30 @@ def test_detect_keywords_summary_merge_deduplicates_with_manual_input():
     assert keywords.count("plan") == 1
     assert keywords.count("skill") == 1
     assert "custom" in keywords
+
+
+def test_detect_keywords_always_has_topic_keyword_for_generic_content():
+    keywords = detect_keywords(
+        url="https://example.com/business-update",
+        title="Ban tin doanh nghiep",
+        summary="Thong tin cap nhat quy 2 cho doanh nghiep va thi truong",
+        topic="Business",
+        manual_keywords=[],
+    )
+
+    assert "business" in keywords
+    assert len(keywords) >= 1
+    assert "doanh" in keywords
+
+
+def test_detect_keywords_ignores_no_summary_placeholder_noise():
+    keywords = detect_keywords(
+        url="https://example.com/empty-summary",
+        title="Cap nhat nhanh",
+        summary="Chưa có tóm tắt",
+        topic="Tech",
+        manual_keywords=[],
+    )
+
+    assert "tech" in keywords
+    assert "chua" not in keywords

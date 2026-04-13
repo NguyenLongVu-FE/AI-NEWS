@@ -64,6 +64,13 @@ _STOPWORDS = {
     "dung",
     "voi",
     "guide",
+    "thong",
+    "tin",
+    "bai",
+    "viet",
+    "cap",
+    "nhat",
+    "quy",
 }
 
 _SUMMARY_HINT_TERMS = {
@@ -95,6 +102,12 @@ _SUMMARY_HINT_TERMS = {
     "keyword",
     "filter",
     "summary",
+}
+
+_NO_SUMMARY_MARKERS = {
+    "chua co tom tat",
+    "no summary",
+    "no summary yet",
 }
 
 GLOBAL_KEYWORD_RULES = {
@@ -155,12 +168,18 @@ def _extract_summary_keywords(summary: str) -> list[str]:
             detected.append(normalized)
 
     normalized_summary = unicodedata.normalize("NFKD", raw_summary.lower())
-    ascii_summary = "".join(ch for ch in normalized_summary if not unicodedata.combining(ch))
+    ascii_summary = "".join(
+        ch for ch in normalized_summary if not unicodedata.combining(ch)
+    )
+    compact_summary = re.sub(r"\s+", " ", ascii_summary).strip()
+    if compact_summary in _NO_SUMMARY_MARKERS:
+        return []
+
     words: list[str] = []
     for word in _WORD_RE.findall(ascii_summary):
         if word in _STOPWORDS or word.isdigit():
             continue
-        if len(word) < 3 and word not in _SUMMARY_HINT_TERMS:
+        if len(word) < 4 and word not in _SUMMARY_HINT_TERMS:
             continue
         words.append(word)
 
@@ -173,6 +192,15 @@ def _extract_summary_keywords(summary: str) -> list[str]:
         for word, count in counts.most_common(30)
         if count >= 2 or word in _SUMMARY_HINT_TERMS
     ]
+    if not frequent_words:
+        seen_words = set()
+        for word in words:
+            if word in seen_words:
+                continue
+            seen_words.add(word)
+            frequent_words.append(word)
+            if len(frequent_words) >= 8:
+                break
 
     bigrams: list[str] = []
     for idx in range(len(words) - 1):
@@ -211,10 +239,13 @@ def detect_keywords(
 
     detected.extend(_extract_summary_keywords(summary))
 
-    if topic_slug == "ai-agent":
-        detected.append("ai-agent")
+    if topic_slug:
+        detected.append(topic_slug)
 
     if manual_keywords:
         detected.extend(str(keyword) for keyword in manual_keywords)
 
-    return normalize_keywords(detected)[:_MAX_KEYWORDS]
+    normalized = normalize_keywords(detected)[:_MAX_KEYWORDS]
+    if normalized:
+        return normalized
+    return ["tech"]
