@@ -76,7 +76,8 @@ def test_detect_keywords_always_has_topic_keyword_for_generic_content():
     )
 
     assert "business" in keywords
-    assert len(keywords) >= 1
+    assert "strategy" in keywords
+    assert len(keywords) >= 2
     assert len(keywords) <= 3
 
 
@@ -90,6 +91,7 @@ def test_detect_keywords_ignores_no_summary_placeholder_noise():
     )
 
     assert "tech" in keywords
+    assert "update" in keywords
     assert "chua" not in keywords
 
 

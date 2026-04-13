@@ -72,17 +72,17 @@ _TOPIC_SIGNAL_RULES = {
     ),
 }
 
-_TOPIC_FALLBACK_KEYWORD = {
-    "ai-agent": "ai-agent",
-    "uiux": "ui-ux",
-    "fe": "frontend",
-    "design": "design",
-    "marketing": "marketing",
-    "business": "business",
-    "education": "education",
-    "health": "health",
-    "entertainment": "entertainment",
-    "tech": "tech",
+_TOPIC_FALLBACK_KEYWORDS = {
+    "ai-agent": ("ai-agent", "workflow"),
+    "uiux": ("ui-ux", "user-flow"),
+    "fe": ("frontend", "react"),
+    "design": ("design", "visual-design"),
+    "marketing": ("marketing", "growth"),
+    "business": ("business", "strategy"),
+    "education": ("education", "learning"),
+    "health": ("health", "wellness"),
+    "entertainment": ("entertainment", "content"),
+    "tech": ("tech", "update"),
 }
 
 
@@ -156,8 +156,11 @@ def detect_keywords(
     detected.extend(_detect_rule_keywords(content, topic_slug))
 
     normalized = normalize_keywords(detected)
-    if normalized:
-        return normalized[:_MAX_KEYWORDS]
-
-    fallback = _TOPIC_FALLBACK_KEYWORD.get(topic_slug, "tech")
-    return [fallback]
+    if len(normalized) < 2:
+        normalized = normalize_keywords(
+            [
+                *normalized,
+                *_TOPIC_FALLBACK_KEYWORDS.get(topic_slug, ("tech", "update")),
+            ]
+        )
+    return normalized[:_MAX_KEYWORDS]
