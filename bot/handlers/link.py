@@ -122,6 +122,35 @@ async def _consume_pending_edit_input(
     return True
 
 
+def _seed_keywords_for_source(
+    manual_tags: list[str], metadata: dict, source: str
+) -> list[str]:
+    merged = [str(tag or "").strip() for tag in (manual_tags or []) if str(tag or "").strip()]
+    if source != "TikTok":
+        return merged
+
+    metadata_hints = metadata.get("keywords_hint", [])
+    if isinstance(metadata_hints, str):
+        metadata_hints = [metadata_hints]
+    elif not isinstance(metadata_hints, (list, tuple, set)):
+        metadata_hints = []
+
+    for hint in metadata_hints:
+        token = str(hint or "").strip().lstrip("#")
+        if token:
+            merged.append(token)
+
+    deduped = []
+    seen = set()
+    for keyword in merged:
+        key = keyword.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(keyword)
+    return deduped
+
+
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     sheets = get_sheets_service()
@@ -172,6 +201,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     title = sanitize_html(metadata["title"])
     source = metadata["source"]
     thumbnail = metadata["thumbnail"]
+    keyword_seeds = _seed_keywords_for_source(parsed.get("tags", []), metadata, source)
 
     ai_summary = gemini.summarize(title, metadata["description"], url)
 
@@ -185,7 +215,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title=title,
         description=metadata.get("description", ""),
         summary=ai_summary,
-        tags=parsed.get("tags", []),
+        tags=keyword_seeds,
     )
     final_category = parsed.get("category") or detected_category
     final_keywords = detect_keywords(
@@ -193,7 +223,7 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
         title=title,
         summary=ai_summary,
         topic=final_category,
-        manual_keywords=parsed.get("tags", []),
+        manual_keywords=keyword_seeds,
     )
 
     row_id = sheets.append_link(

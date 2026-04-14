@@ -245,6 +245,54 @@ async def test_link_duplicate_merges_note_and_keywords(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_link_tiktok_seeds_keywords_from_metadata_hints(monkeypatch):
+    sheets = _LinkSheets()
+    link_module = _load_handler_module(monkeypatch, "bot.handlers.link", sheets)
+
+    monkeypatch.setattr(
+        link_module,
+        "parse_link_input",
+        lambda _text: {
+            "url": "https://www.tiktok.com/@creator/video/123456",
+            "tags": ["custom"],
+            "category": "",
+            "notes": "",
+        },
+    )
+    monkeypatch.setattr(link_module, "validate_url", lambda _url: (True, ""))
+    monkeypatch.setattr(link_module, "validate_tags", lambda _tags: (True, ""))
+    monkeypatch.setattr(link_module, "sanitize_html", lambda value: value)
+    monkeypatch.setattr(link_module.gemini, "summarize", lambda _t, _d, _u: "AI summary")
+    monkeypatch.setattr(
+        link_module.scraper,
+        "fetch_metadata",
+        lambda _url: {
+            "title": "Creator on TikTok",
+            "description": "Meal prep tips #mealprep #keto",
+            "thumbnail": "thumb.png",
+            "source": "TikTok",
+            "success": True,
+            "error": None,
+            "keywords_hint": ["mealprep", "keto", "creator"],
+        },
+    )
+
+    captured = {}
+
+    def _fake_detect_keywords(**kwargs):
+        captured["manual_keywords"] = kwargs["manual_keywords"]
+        return ["custom", "mealprep", "keto"]
+
+    monkeypatch.setattr(link_module, "detect_keywords", _fake_detect_keywords)
+
+    update = _DummyUpdate(text="https://www.tiktok.com/@creator/video/123456")
+    await link_module.handle_link(update, _DummyContext())
+
+    assert captured["manual_keywords"] == ["custom", "mealprep", "keto", "creator"]
+    assert sheets.append_kwargs["tags"] == ["custom", "mealprep", "keto"]
+
+
+@pytest.mark.asyncio
 async def test_manage_edit_category_moves_record_to_new_topic(monkeypatch):
     sheets = _ManageSheets()
     manage_module = _load_handler_module(monkeypatch, "bot.handlers.manage", sheets)
